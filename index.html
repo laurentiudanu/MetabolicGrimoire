@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <title>MetabolicGrimoire</title>
+    <script src="jq.js"></script>
+    <style>
+      html, body {min-height: 100vh;}
+      article, aside, details, figcaption, figure, footer, header, hgroup, menu, nav, section, summary, main {display: block;}
+      html, body, div, span, object, iframe, h1, h2, h3, h4, h5, h6, p, blockquote, pre, abbr, address, cite, code, del, dfn, em, img, ins, kbd, q, samp, small, strong, sub, sup, var, b, i, dl, dt, dd, ol, ul, li, fieldset, form, label, legend, table, caption, tbody, tfoot, thead, tr, th, td, article, aside, canvas, details, figcaption, figure, footer, header, hgroup, menu, nav, section, summary, time, mark, audio, video, main {margin: 0; padding: 0; border: 0; outline: 0; font-size: 100%; vertical-align: baseline; background: transparent;}
+      ol, ul {list-style:none;}
+      blockquote, q {quotes: none;}
+      blockquote:before, blockquote:after,  q:before, q:after {content:''; content:none;}
+      del {text-decoration: line-through;}
+      svg:not(:root) {overflow: hidden;}
+      abbr[title], dfn[title] {border-bottom: 1px dotted; cursor: help;}
+      table {width: 100%; border-collapse: collapse; border-spacing: 0; empty-cells: show; table-layout: fixed;}
+      input, select {vertical-align: middle;}
+      input[type="radio"] {vertical-align: text-bottom;}
+      input[type="checkbox"] {vertical-align: bottom;}
+      button, input, select, textarea {margin: 0; font-family: "Source Sans Pro", "Lucida Sans Unicode", Helvetica, Arial, Verdana, sans-serif;}
+      textarea {resize: none;}
+      button, html input[type="button"], input[type="reset"], input[type="submit"] {-webkit-appearance: button; cursor: pointer;}
+      button[disabled], html input[disabled] {cursor: default;}
+      input[type="checkbox"], input[type="radio"] {box-sizing: border-box; padding: 0; *height: 13px; *width: 13px;}
+      img {display: block; max-width: 100%; height: auto !important;}
+      td img {vertical-align: top;}
+      address {display: inline;}
+      code, kbd, pre, samp {font-family: monospace, serif; font-size: 16px;}
+      pre {white-space: pre; white-space: pre-wrap; word-wrap: break-word;}
+      a:hover, a:active {outline: none;}
+      a, a:hover, a:visited {text-decoration: none;}
+      iframe {display: block; max-width: 100%;}
+      fieldset {border: 1px solid #c0c0c0; padding: 16px;}
+      ::placeholder, select {color: #8E8E8E; font-family: "Helvetica", Arial, sans-serif; font-size: 16px; font-weight: 600;}
+      ::-webkit-input-placeholder {color: #8E8E8E; font-family: "Helvetica", Arial, sans-serif; font-size: 16px; font-weight: 600;}
+      :focus::placeholder {opacity: 0.4;}
+      :focus::-webkit-input-placeholder {opacity: 0.4;}
+      :-moz-placeholder {color: #8E8E8E; font-family: "Helvetica", Arial, sans-serif; font-size: 16px; font-weight: 600;}
+      :focus:-moz-placeholder {opacity: 0.4;}
+      *, *:before, *:after {-webkit-box-sizing: border-box; -moz-box-sizing: border-box; box-sizing: border-box;}
+      body {
+        font: 16px/1.6em "Helvetica", Arial, sans-serif;
+        background-color: #e3d4d4;
+        color: #071B1B;
+        overflow-x: hidden;
+        -webkit-font-smoothing: antialiased;
+        font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        position: relative;
+      }
+      .pt-8 {padding-top: 8px;}
+      .pt-16 {padding-top: 16px;}
+      .pt-24 {padding-top: 24px;}
+      .pt-32 {padding-top: 32px;}
+      .pt-40 {padding-top: 40px;}
+      .pt-48 {padding-top: 48px;}
+      .pt-56 {padding-top: 56px;}
+      .pt-64 {padding-top: 64px;}
+      .pb-8 {padding-bottom: 8px;}
+      .pb-12 {padding-bottom: 12px;}
+      .pb-16 {padding-bottom: 16px;}
+      .pb-24 {padding-bottom: 24px;}
+      .pb-32 {padding-bottom: 32px;}
+      .pb-40 {padding-bottom: 40px;}
+      .pb-48 {padding-bottom: 48px;}
+      .pb-56 {padding-bottom: 56px;}
+      .pb-64 {padding-bottom: 64px;}
+      .container {width: min(90%, 640px); margin-inline: auto; content-visibility: visible;}
+      .grid {display: flex; flex-direction: row; flex-wrap: wrap;}
+
+      .mg-row {justify-content: space-between;}
+      .mg-row .add-row {
+        display: block;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background-color: #071B1B;
+        color: #fff;
+        font-size: 32px;
+        line-height: 34px;
+        text-align: center;
+        cursor: pointer;
+      }
+      .mg-row input, .mg-row select, .fs-input {
+        border: 1px solid #000;
+        padding: 8px 16px;
+      }
+      .fs-input {display: block; width: 100%; padding: 16px;}
+      .mg-row .food {width: 464px;}
+      .mg-row .quant {width: 112px;}
+      .food-search {position: relative;}
+      .food-search .fs-result {
+        display: none;
+        width: 100%;
+        position: absolute;
+        top: 100%;
+        background-color: #e9e9e9;
+        padding: 16px;
+        z-index: -1;
+      }
+      .food-search .fs-result.active {display: block; z-index: 99999;}
+      .food-search .fs-result p {
+        cursor: pointer;
+        padding: 0 24px 0 0;
+        font-weight: 700;
+        position: relative;
+      }
+        .food-search .fs-result p:not(:last-of-type) {margin-bottom: 16px;}
+        .food-search .fs-result p:after {
+          display: block;
+          content: "+";
+          width: 16px;
+          height: 16px;
+          background-color: #fff;
+          line-height: 14px;
+          font-size: 20px;
+          font-weight: 700;
+          border-radius: 50%;
+          text-align: center;
+          position: absolute;
+          right: 0;
+          top: 4px;
+        }
+    </style>
+  </head>
+  <body>
+    <div id="mg" class="container pt-64 pb-64">
+      <div class="food-search">
+        <input type="text" placeholder="Type food to add" class="fs-input">
+        <div class="fs-result">
+
+        </div>
+      </div>
+    </div>
+    <script>
+      window.onload = function() {
+        (function($){
+            const mg = $("#mg");
+            const foodlist = {
+                'banane': [89, 1.1, 23],
+                'mere': [55, 0.3, 14],
+                'oua': [140, 12, 1],
+                'albus': [44, 9, 0.7],
+                'cacao': [230, 22, 20],
+                'morcov': [40, 0.9, 9.5]
+            };
+            if ("ban" in foodlist) {
+              console.log("Found!");
+            }
+            console.log(foodlist["mere"][0]);
+
+            function findFoodByPartialKey(obj, partial) {
+              let so = Object.keys(obj).find(k => k.startsWith(partial.toLowerCase()));
+              if(so){
+                return so;
+              }
+              else {
+                return null;
+              }
+            }
+
+            const key = findFoodByPartialKey(foodlist, "Mac");
+            console.log(key, foodlist[key]);
+
+
+            const appw = $("#mg");
+            const searchInput = $(".fs-input");
+            searchInput.on('keyup', function (event) {
+              if(event.target.value.length >= 2) {
+                const searchString = event.target.value.toLowerCase();
+                let findFood = findFoodByPartialKey(foodlist, searchString);
+                if(findFood) {
+                  //console.log(findFood, foodlist[findFood][0])
+                  $(".fs-result").empty().addClass("active").append('<p>'+findFood+'</p>');
+                }
+                else {
+                  $(".fs-result").empty().addClass("active").append('<h2>Item not found...try again</h2>');
+                }
+              }
+              else {
+                $(".fs-result").empty().removeClass("active");
+              }
+            });
+
+            //appw.append('<div class="mg-row grid"><select name="food" class="food"><option value="#null">Select food</option></select><input type="number" class="quant" placeholder="Quantity"><span class="add-row">+</span></div>');
+            
+            
+            
+        })($);
+      }
+    </script>
+	</body>
+</html>
