@@ -213,7 +213,9 @@
                 let quantval = Number(event.target.value);
                 let fooditem = $(this).attr("data-key");
                 let tcalories = ((foodlist[fooditem][0]/100) * quantval).toFixed(0);
-                
+                let tprotein = ((foodlist[fooditem][1]/100) * quantval).toFixed(0);
+                let tcarbs = ((foodlist[fooditem][2]/100) * quantval).toFixed(0);
+                console.log(tcalories+" - "+tprotein+" - "+tcarbs);
               }
               else {
                 
