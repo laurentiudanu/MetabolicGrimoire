@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>MetabolicGrimoire</title>
     <script src="jq.js"></script>
     <style>
@@ -67,7 +68,7 @@
       .pb-48 {padding-bottom: 48px;}
       .pb-56 {padding-bottom: 56px;}
       .pb-64 {padding-bottom: 64px;}
-      .container {width: min(90%, 640px); margin-inline: auto; content-visibility: visible;}
+      .container {width: min(90%, 540px); margin-inline: auto; content-visibility: visible;}
       .grid {display: flex; flex-direction: row; flex-wrap: wrap;}
 
       .mg-row {justify-content: space-between;}
@@ -123,6 +124,18 @@
           right: 0;
           top: 4px;
         }
+
+      .food-search-list .fsl-entry:not(:last-of-type) {
+        padding-bottom: 16px;
+        margin-bottom: 16px;
+        border-bottom: 1px solid #000;
+      }
+      .food-search-list .fsl-entry p {font-weight: 700; font-size: 18px;}
+      .food-search-list .fsl-entry {justify-content: space-between; align-items: center;}
+      .food-search-list input {
+        display: block;
+        padding: 8px 16px;
+      }
     </style>
   </head>
   <body>
@@ -132,6 +145,10 @@
         <div class="fs-result">
 
         </div>
+      </div>
+      <div class="food-search-list pt-40">
+
+
       </div>
     </div>
     <script>
@@ -173,7 +190,7 @@
                 let findFood = findFoodByPartialKey(foodlist, searchString);
                 if(findFood) {
                   //console.log(findFood, foodlist[findFood][0])
-                  $(".fs-result").empty().addClass("active").append('<p>'+findFood+'</p>');
+                  $(".fs-result").empty().addClass("active").append('<p data-key="'+findFood+'">'+findFood+'</p>');
                 }
                 else {
                   $(".fs-result").empty().addClass("active").append('<h2>Item not found...try again</h2>');
@@ -182,6 +199,13 @@
               else {
                 $(".fs-result").empty().removeClass("active");
               }
+            });
+
+            $(document).on("click",".fs-result p",function(){
+              let foodkey = $(this).attr("data-key");
+              $(".food-search-list").append("<div class='fsl-entry grid'><p data-key='"+foodkey+"'>"+foodkey+"</p><input type='text' placeholder='Quantity' class='quant-input'></div>");
+              $(".fs-result").empty().removeClass("active");
+              searchInput.val("");
             });
 
             //appw.append('<div class="mg-row grid"><select name="food" class="food"><option value="#null">Select food</option></select><input type="number" class="quant" placeholder="Quantity"><span class="add-row">+</span></div>');
