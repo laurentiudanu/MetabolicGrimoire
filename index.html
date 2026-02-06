@@ -203,9 +203,21 @@
 
             $(document).on("click",".fs-result p",function(){
               let foodkey = $(this).attr("data-key");
-              $(".food-search-list").append("<div class='fsl-entry grid'><p data-key='"+foodkey+"'>"+foodkey+"</p><input type='text' placeholder='Quantity' class='quant-input'></div>");
+              $(".food-search-list").append("<div class='fsl-entry grid'><p>"+foodkey+"</p><input type='number' placeholder='Quantity' class='quant-input' data-key='"+foodkey+"'></div>");
               $(".fs-result").empty().removeClass("active");
               searchInput.val("");
+            });
+
+            $(".food-search-list").on('input', '.quant-input', function (event) {
+              if(event.target.value.length >= 2) {
+                let quantval = Number(event.target.value);
+                let fooditem = $(this).attr("data-key");
+                let tcalories = ((foodlist[fooditem][0]/100) * quantval).toFixed(0);
+                
+              }
+              else {
+                
+              }
             });
 
             //appw.append('<div class="mg-row grid"><select name="food" class="food"><option value="#null">Select food</option></select><input type="number" class="quant" placeholder="Quantity"><span class="add-row">+</span></div>');
