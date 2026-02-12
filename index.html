@@ -5,6 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>MetabolicGrimoire</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="jq.js"></script>
     <style>
       html, body {min-height: 100vh;}
@@ -139,6 +140,8 @@
     </style>
   </head>
   <body>
+    <p>https://platform.fatsecret.com/my-account/dashboard</p>
+    <div id="app">{{ message }}</div>
     <div id="mg" class="container pt-64 pb-64">
       <div class="food-search">
         <input type="text" placeholder="Type food to add" class="fs-input">
@@ -152,6 +155,16 @@
       </div>
     </div>
     <script>
+      const { createApp, ref } = Vue
+
+      createApp({
+        setup() {
+          const message = ref('Hello vue!')
+          return {
+            message
+          }
+        }
+      }).mount('#app')
       window.onload = function() {
         (function($){
             const mg = $("#mg");

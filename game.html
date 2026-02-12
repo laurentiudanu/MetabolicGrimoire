@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Maze Game — Torchlight Edition</title>
+  <style>
+    body {
+      background: #111;
+      display: flex;
+      justify-content: center;
+      flex-direction: column;
+      align-items: center;
+      color: white;
+      font-family: Arial;
+    }
+    canvas {
+      background: #000;
+      margin-top: 20px;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="mazeCanvas" width="600" height="600"></canvas>
+
+<script>
+/* ------------------------------
+      GAME STATE
+------------------------------ */
+let gamesPlayed = 0;
+let mazeSize = 15;
+let cellSize;
+
+let maze = [];
+let visited = [];
+let genStack = [];
+let generating = true;
+
+let player = { x: 0, y: 0, px: 0, py: 0 };
+let goal = { x: 0, y: 0 };
+
+/* Torchlight settings */
+let baseLightRadius = 2.2;     // in maze cells
+let flickerStrength = 0.25;    // how much the radius fluctuates
+
+const canvas = document.getElementById("mazeCanvas");
+const ctx = canvas.getContext("2d");
+
+/* ------------------------------
+      MAZE GENERATION (ANIMATED)
+------------------------------ */
+function initMaze(size) {
+  maze = [];
+  visited = [];
+  genStack = [];
+
+  for (let y = 0; y < size; y++) {
+    maze[y] = [];
+    visited[y] = [];
+    for (let x = 0; x < size; x++) {
+      maze[y][x] = { top: true, right: true, bottom: true, left: true };
+      visited[y][x] = false;
+    }
+  }
+
+  visited[0][0] = true;
+  genStack.push({ x: 0, y: 0 });
+}
+
+function animateMazeGeneration() {
+  let stepsPerFrame = 50; // adjust for speed
+
+  for (let i = 0; i < stepsPerFrame; i++) {
+    if (genStack.length === 0) {
+      generating = false;
+      drawMaze();
+      return;
+    }
+
+    let current = genStack.pop();
+    let { x, y } = current;
+
+    let neighbors = [];
+
+    if (y > 0 && !visited[y - 1][x]) neighbors.push({ x, y: y - 1, dir: "top" });
+    if (x < mazeSize - 1 && !visited[y][x + 1]) neighbors.push({ x: x + 1, y, dir: "right" });
+    if (y < mazeSize - 1 && !visited[y + 1][x]) neighbors.push({ x, y: y + 1, dir: "bottom" });
+    if (x > 0 && !visited[y][x - 1]) neighbors.push({ x: x - 1, y, dir: "left" });
+
+    if (neighbors.length > 0) {
+      genStack.push(current);
+
+      let next = neighbors[Math.floor(Math.random() * neighbors.length)];
+      visited[next.y][next.x] = true;
+
+      if (next.dir === "top") {
+        maze[y][x].top = false;
+        maze[next.y][next.x].bottom = false;
+      }
+      if (next.dir === "right") {
+        maze[y][x].right = false;
+        maze[next.y][next.x].left = false;
+      }
+      if (next.dir === "bottom") {
+        maze[y][x].bottom = false;
+        maze[next.y][next.x].top = false;
+      }
+      if (next.dir === "left") {
+        maze[y][x].left = false;
+        maze[next.y][next.x].right = false;
+      }
+
+      genStack.push({ x: next.x, y: next.y });
+    }
+  }
+
+  drawMaze();
+  requestAnimationFrame(animateMazeGeneration);
+}
+
+
+/* ------------------------------
+      FOG OF WAR + TORCHLIGHT
+------------------------------ */
+function isVisible(x, y) {
+  let dx = x - player.x;
+  let dy = y - player.y;
+  let dist = Math.sqrt(dx*dx + dy*dy);
+
+  let flicker = (Math.random() - 0.5) * flickerStrength;
+  let radius = baseLightRadius + flicker;
+
+  return dist <= radius;
+}
+
+/* ------------------------------
+      DRAW MAZE + LIGHT MASK
+------------------------------ */
+function drawMaze() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let y = 0; y < mazeSize; y++) {
+    for (let x = 0; x < mazeSize; x++) {
+      if (!isVisible(x, y)) continue;
+
+      let px = x * cellSize;
+      let py = y * cellSize;
+      let cell = maze[y][x];
+
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+
+      if (cell.top)    drawLine(px, py, px + cellSize, py);
+      if (cell.right)  drawLine(px + cellSize, py, px + cellSize, py + cellSize);
+      if (cell.bottom) drawLine(px, py + cellSize, px + cellSize, py + cellSize);
+      if (cell.left)   drawLine(px, py, px, py + cellSize);
+    }
+  }
+
+  if (isVisible(goal.x, goal.y)) {
+    ctx.fillStyle = "green";
+    ctx.fillRect(goal.x * cellSize + 4, goal.y * cellSize + 4, cellSize - 8, cellSize - 8);
+  }
+
+  ctx.fillStyle = "blue";
+  ctx.fillRect(player.px + 4, player.py + 4, cellSize - 8, cellSize - 8);
+
+  applyLightMask();
+}
+
+function drawLine(x1, y1, x2, y2) {
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
+function applyLightMask() {
+  let cx = player.px + cellSize / 2;
+  let cy = player.py + cellSize / 2;
+
+  let flicker = (Math.random() - 0.5) * flickerStrength * cellSize;
+  let radius = (baseLightRadius * cellSize) + flicker;
+
+  let gradient = ctx.createRadialGradient(
+    cx, cy, radius * 0.2,
+    cx, cy, radius
+  );
+
+  gradient.addColorStop(0, "rgba(0,0,0,0)");
+  gradient.addColorStop(1, "rgba(0,0,0,1)");
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+/* ------------------------------
+      ANIMATED MOVEMENT
+------------------------------ */
+function movePlayer(dx, dy) {
+  if (generating) return;
+
+  let cell = maze[player.y][player.x];
+
+  if (dy === -1 && cell.top) return;
+  if (dx === 1 && cell.right) return;
+  if (dy === 1 && cell.bottom) return;
+  if (dx === -1 && cell.left) return;
+
+  animateMove(player.x + dx, player.y + dy);
+}
+
+function animateMove(tx, ty) {
+  let startX = player.px;
+  let startY = player.py;
+  let endX = tx * cellSize;
+  let endY = ty * cellSize;
+
+  let frames = 10;
+  let frame = 0;
+
+  function step() {
+    frame++;
+    let t = frame / frames;
+
+    player.px = startX + (endX - startX) * t;
+    player.py = startY + (endY - startY) * t;
+
+    drawMaze();
+
+    if (frame < frames) {
+      requestAnimationFrame(step);
+    } else {
+      player.x = tx;
+      player.y = ty;
+      checkWin();
+    }
+  }
+
+  step();
+}
+
+/* ------------------------------
+      KEYBOARD CONTROLS
+------------------------------ */
+document.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowUp") movePlayer(0, -1);
+  if (e.key === "ArrowRight") movePlayer(1, 0);
+  if (e.key === "ArrowDown") movePlayer(0, 1);
+  if (e.key === "ArrowLeft") movePlayer(-1, 0);
+});
+
+/* ------------------------------
+      TOUCH CONTROLS
+------------------------------ */
+let touchStartX = 0;
+let touchStartY = 0;
+
+canvas.addEventListener("touchstart", (e) => {
+  let t = e.touches[0];
+  touchStartX = t.clientX;
+  touchStartY = t.clientY;
+});
+
+canvas.addEventListener("touchend", (e) => {
+  let t = e.changedTouches[0];
+  let dx = t.clientX - touchStartX;
+  let dy = t.clientY - touchStartY;
+
+  if (Math.abs(dx) > Math.abs(dy)) {
+    if (dx > 20) movePlayer(1, 0);
+    else if (dx < -20) movePlayer(-1, 0);
+  } else {
+    if (dy > 20) movePlayer(0, 1);
+    else if (dy < -20) movePlayer(0, -1);
+  }
+});
+
+/* ------------------------------
+      WIN CONDITION
+------------------------------ */
+function checkWin() {
+  if (player.x === goal.x && player.y === goal.y) {
+    //alert("You escaped the maze!");
+
+    gamesPlayed++;
+    startGame();
+  }
+}
+
+/* ------------------------------
+      START GAME
+------------------------------ */
+function startGame() {
+  mazeSize = 15 + Math.floor(gamesPlayed / 5);
+  cellSize = canvas.width / mazeSize;
+
+  player = { x: 0, y: 0, px: 0, py: 0 };
+  goal = { x: mazeSize - 1, y: mazeSize - 1 };
+
+  generating = true;
+  initMaze(mazeSize);
+  animateMazeGeneration();
+}
+
+startGame();
+</script>
+
+</body>
+</html>
