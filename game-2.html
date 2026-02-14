@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Maze Game</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #111;
+    color: #eee;
+    font-family: sans-serif;
+    height: 100%;
+  }
+  #mazeCanvas {
+    position: fixed;
+    inset: 0;
+    display: block;
+    background: #000;
+  }
+  #messageBox {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    min-height: 40px;
+    padding: 8px 12px;
+    background: #1a1414;
+    border-top: 1px solid #333;
+    font-size: 14px;
+    font-family: Courier, monospace;
+    text-transform: uppercase;
+    color: #a0a08b;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="mazeCanvas"></canvas>
+<div id="messageBox">Collect the key to reveal the exit.</div>
+
+<script>
+(function() {
+  const canvas = document.getElementById('mazeCanvas');
+  const ctx = canvas.getContext('2d');
+  const messageBox = document.getElementById('messageBox');
+
+  // 400 dummy messages
+  const messages = [
+    "some text here",
+    "some text here #2",
+    "some text here #3",
+    "some text here #4",
+    "some text here #5"
+  ];
+  /*
+  for (let i = 0; i < 400; i++) {
+    messages.push("Dummy lore message #" + (i + 1));
+  }
+    */
+
+  let level = 1;
+  let cols = 21;
+  let rows = 21;
+  let cellSize = 24;
+  let maze = [];
+  let start = {x: 0, y: 0};
+  let exit = {x: 0, y: 0};
+  let key = {x: 0, y: 0, collected: false};
+  let exitVisible = false;
+  let keyGlow = 0;
+
+  // Smooth movement state
+  let player = {x: 0, y: 0};
+  let animPlayer = {x: 0, y: 0};
+  let animSpeed = 0.15; // lower = slower
+
+  // Fog animation
+  let fogRadius = 4;
+  let fogAnim = 0; // animated fade
+  let fogTarget = 1;
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight - messageBox.offsetHeight;
+    computeCellSize();
+  }
+
+  function computeCellSize() {
+    const maxCellWidth = Math.floor(canvas.width / cols);
+    const maxCellHeight = Math.floor(canvas.height / rows);
+    cellSize = Math.max(8, Math.min(maxCellWidth, maxCellHeight));
+  }
+
+  function createGrid() {
+    maze = [];
+    for (let y = 0; y < rows; y++) {
+      const row = [];
+      for (let x = 0; x < cols; x++) {
+        row.push({
+          x, y,
+          visited: false,
+          walls: {top: true, right: true, bottom: true, left: true}
+        });
+      }
+      maze.push(row);
+    }
+  }
+
+  function getCell(x, y) {
+    if (x < 0 || y < 0 || x >= cols || y >= rows) return null;
+    return maze[y][x];
+  }
+
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  function generateMaze() {
+    createGrid();
+    const stack = [];
+    const startCell = getCell(0, 0);
+    startCell.visited = true;
+    stack.push(startCell);
+
+    while (stack.length > 0) {
+      const current = stack[stack.length - 1];
+      const neighbors = [];
+
+      const top = getCell(current.x, current.y - 1);
+      const right = getCell(current.x + 1, current.y);
+      const bottom = getCell(current.x, current.y + 1);
+      const left = getCell(current.x - 1, current.y);
+
+      if (top && !top.visited) neighbors.push({dir: 'top', cell: top});
+      if (right && !right.visited) neighbors.push({dir: 'right', cell: right});
+      if (bottom && !bottom.visited) neighbors.push({dir: 'bottom', cell: bottom});
+      if (left && !left.visited) neighbors.push({dir: 'left', cell: left});
+
+      if (neighbors.length > 0) {
+        const next = shuffle(neighbors)[0];
+        switch (next.dir) {
+          case 'top':
+            current.walls.top = false;
+            next.cell.walls.bottom = false;
+            break;
+          case 'right':
+            current.walls.right = false;
+            next.cell.walls.left = false;
+            break;
+          case 'bottom':
+            current.walls.bottom = false;
+            next.cell.walls.top = false;
+            break;
+          case 'left':
+            current.walls.left = false;
+            next.cell.walls.right = false;
+            break;
+        }
+        next.cell.visited = true;
+        stack.push(next.cell);
+      } else {
+        stack.pop();
+      }
+    }
+  }
+
+  // BFS solvability check
+  function mazeIsSolvable() {
+    const queue = [{x: start.x, y: start.y}];
+    const visited = new Set([start.x + "," + start.y]);
+
+    while (queue.length > 0) {
+      const {x, y} = queue.shift();
+      if (x === exit.x && y === exit.y) return true;
+
+      const cell = getCell(x, y);
+      const moves = [];
+
+      if (!cell.walls.top) moves.push({x, y: y - 1});
+      if (!cell.walls.right) moves.push({x: x + 1, y});
+      if (!cell.walls.bottom) moves.push({x, y: y + 1});
+      if (!cell.walls.left) moves.push({x: x - 1, y});
+
+      for (const m of moves) {
+        const key = m.x + "," + m.y;
+        if (!visited.has(key)) {
+          visited.add(key);
+          queue.push(m);
+        }
+      }
+    }
+    return false;
+  }
+
+  function chooseStartAndExit() {
+    const corners = [
+      {x: 0, y: 0},
+      {x: cols - 1, y: 0},
+      {x: 0, y: rows - 1},
+      {x: cols - 1, y: rows - 1}
+    ];
+    const startIndex = Math.floor(Math.random() * corners.length);
+    start = {...corners[startIndex]};
+    exit = {...corners[(startIndex + 2) % 4]};
+    player = {...start};
+    animPlayer = {...start};
+  }
+
+  function placeKey() {
+    key.collected = false;
+    while (true) {
+      const x = Math.floor(Math.random() * cols);
+      const y = Math.floor(Math.random() * rows);
+      if ((x === start.x && y === start.y) || (x === exit.x && y === exit.y)) continue;
+      key.x = x;
+      key.y = y;
+      break;
+    }
+  }
+
+  function resetLevel() {
+    do {
+      generateMaze();
+      chooseStartAndExit();
+    } while (!mazeIsSolvable());
+
+    placeKey();
+    exitVisible = false;
+    computeCellSize();
+  }
+
+  function nextLevel() {
+    level++;
+    cols = Math.min(51, cols + 2);
+    rows = Math.min(51, rows + 2);
+    if (fogRadius > 2) fogRadius--;
+    resetLevel();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(
+      (canvas.width - cols * cellSize) / 2,
+      (canvas.height - rows * cellSize) / 2
+    );
+
+    // Maze walls
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const cell = maze[y][x];
+        const px = x * cellSize;
+        const py = y * cellSize;
+
+        if (cell.walls.top) {
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(px + cellSize, py);
+          ctx.stroke();
+        }
+        if (cell.walls.right) {
+          ctx.beginPath();
+          ctx.moveTo(px + cellSize, py);
+          ctx.lineTo(px + cellSize, py + cellSize);
+          ctx.stroke();
+        }
+        if (cell.walls.bottom) {
+          ctx.beginPath();
+          ctx.moveTo(px + cellSize, py + cellSize);
+          ctx.lineTo(px, py + cellSize);
+          ctx.stroke();
+        }
+        if (cell.walls.left) {
+          ctx.beginPath();
+          ctx.moveTo(px, py + cellSize);
+          ctx.lineTo(px, py);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Exit (only visible after key)
+    if (exitVisible) {
+      drawCell(exit.x, exit.y, '#2ecc71');
+    }
+
+    // Key
+    if (!key.collected) {
+      drawKey(key.x, key.y);
+    }
+
+    // Player (smooth)
+    drawPlayer(animPlayer.x, animPlayer.y);
+
+    // Fog animation
+    fogAnim += (fogTarget - fogAnim) * 0.05;
+    drawFog(fogAnim);
+
+    ctx.restore();
+  }
+
+  function drawCell(x, y, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(
+      x * cellSize + 4,
+      y * cellSize + 4,
+      cellSize - 8,
+      cellSize - 8
+    );
+  }
+
+  function drawPlayer(x, y) {
+    ctx.fillStyle = '#3498db';
+    const cx = x * cellSize + cellSize / 2;
+    const cy = y * cellSize + cellSize / 2;
+    const r = cellSize * 0.3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawKey(x, y) {
+    const px = x * cellSize + cellSize / 2;
+    const py = y * cellSize + cellSize / 2;
+
+    // Breathing glow
+    const glow = (Math.sin(keyGlow) + 1) * 0.5; // 0 → 1
+    const glowRadius = cellSize * (0.25 + glow * 0.15);
+
+    // Outer glow
+    const gradient = ctx.createRadialGradient(px, py, glowRadius * 0.2, px, py, glowRadius);
+    gradient.addColorStop(0, "rgba(255, 215, 0, 0.9)");
+    gradient.addColorStop(1, "rgba(255, 215, 0, 0)");
+
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(px, py, glowRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Key core
+    ctx.fillStyle = "#f1c40f";
+    ctx.beginPath();
+    ctx.arc(px, py, cellSize * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Key stem
+    ctx.fillRect(px, py - cellSize * 0.1, cellSize * 0.25, cellSize * 0.2);
+    }
+
+
+  function drawFog(alpha) {
+    const px = animPlayer.x;
+    const py = animPlayer.y;
+
+    ctx.save();
+    ctx.fillStyle = `rgba(0,0,0,${0.9 * alpha})`;
+
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const dist = Math.abs(x - px) + Math.abs(y - py);
+        if (dist > fogRadius) {
+          ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function canMove(fromX, fromY, toX, toY) {
+    const from = getCell(fromX, fromY);
+    const to = getCell(toX, toY);
+    if (!to) return false;
+
+    if (toY === fromY - 1) return !from.walls.top;
+    if (toX === fromX + 1) return !from.walls.right;
+    if (toY === fromY + 1) return !from.walls.bottom;
+    if (toX === fromX - 1) return !from.walls.left;
+
+    return false;
+  }
+
+  function handleMove(dx, dy) {
+    const nx = player.x + dx;
+    const ny = player.y + dy;
+    if (!canMove(player.x, player.y, nx, ny)) return;
+
+    player.x = nx;
+    player.y = ny;
+
+    // Fog pulse animation
+    fogTarget = 0.6;
+    setTimeout(() => fogTarget = 1, 150);
+
+    // Key pickup
+    if (!key.collected && player.x === key.x && player.y === key.y) {
+      key.collected = true;
+      exitVisible = true;
+
+      const msgIndex = Math.floor(Math.random() * messages.length);
+      messageBox.textContent = messages[msgIndex];
+    }
+
+    // Exit
+    if (player.x === exit.x && player.y === exit.y) {
+      if (!exitVisible) {
+        messageBox.textContent = "You sense an exit, but something is missing...";
+        return;
+      }
+      messageBox.textContent = "You descend deeper into the maze...";
+      nextLevel();
+    }
+  }
+
+  window.addEventListener('keydown', (e) => {
+    switch (e.key) {
+      case 'ArrowUp':
+      case 'w':
+      case 'W':
+        handleMove(0, -1);
+        break;
+      case 'ArrowDown':
+      case 's':
+      case 'S':
+        handleMove(0, 1);
+        break;
+      case 'ArrowLeft':
+      case 'a':
+      case 'A':
+        handleMove(-1, 0);
+        break;
+      case 'ArrowRight':
+      case 'd':
+      case 'D':
+        handleMove(1, 0);
+        break;
+    }
+  });
+
+  function animate() {
+    // Smooth player interpolation
+    animPlayer.x += (player.x - animPlayer.x) * animSpeed;
+    animPlayer.y += (player.y - animPlayer.y) * animSpeed;
+    keyGlow += 0.05; // breathing speed
+
+    draw();
+    requestAnimationFrame(animate);
+  }
+
+  window.addEventListener('resize', resizeCanvas);
+
+  resetLevel();
+  resizeCanvas();
+  animate();
+})();
+</script>
+</body>
+</html>
