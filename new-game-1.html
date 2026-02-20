@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>AZEM | null chamber</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    overflow: hidden;
+    height: 100%;
+    width: 100%;
+    font-family: system-ui, sans-serif;
+    color: #eee;
+  }
+  #gameCanvas {
+    display: block;
+    margin: 0;
+    background: #000;
+  }
+  #ui-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+  }
+  #messageBox {
+    position: absolute;
+    max-width: 60%;
+    left: 50%;
+    top: 20%;
+    transform: translateX(-50%);
+    background: rgba(10, 10, 10, 0.95);
+    border: 1px solid #666;
+    padding: 16px 20px;
+    border-radius: 8px;
+    display: none;
+    pointer-events: auto;
+    box-shadow: 0 0 20px rgba(0,0,0,0.8);
+  }
+  #messageBox h2 {
+    margin: 0 0 8px;
+    font-size: 18px;
+    color: #ffd54a;
+  }
+  #messageBox p {
+    margin: 0 0 12px;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  #messageBox button {
+    padding: 6px 14px;
+    border-radius: 4px;
+    border: none;
+    background: #ffd54a;
+    color: #000;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #messageBox button:hover {
+    background: #ffeb7a;
+  }
+  #levelLabel {
+    position: absolute;
+    left: 16px;
+    top: 12px;
+    font-size: 12px;
+    color: #aaa;
+    text-shadow: 0 0 4px #000;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<div id="ui-overlay">
+  <div id="levelLabel"></div>
+  <div id="messageBox">
+    <h2 id="messageTitle"></h2>
+    <p id="messageText"></p>
+    <button id="messageClose">Close</button>
+  </div>
+</div>
+
+<script>
+(() => {
+/* ============ CANVAS ============ */
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const messageBox = document.getElementById("messageBox");
+const messageTitle = document.getElementById("messageTitle");
+const messageText = document.getElementById("messageText");
+const messageClose = document.getElementById("messageClose");
+const levelLabel = document.getElementById("levelLabel");
+
+let width, height;
+function resizeCanvas() {
+  width = window.innerWidth;
+  height = window.innerHeight;
+  const aspect = 16 / 9;
+  let w = width;
+  let h = width / aspect;
+  if (h > height) {
+    h = height;
+    w = h * aspect;
+  }
+  canvas.width = w;
+  canvas.height = h;
+  canvas.style.position = "absolute";
+  canvas.style.left = ((window.innerWidth - w) / 2) + "px";
+  canvas.style.top = ((window.innerHeight - h) / 2) + "px";
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+/* ============ STATE ============ */
+let level = 1;
+let cols, rows, cellSize;
+let maze = [];
+let player = { x: 0, y: 0 };
+let playerRadius = 0.28;
+let playerVisible = true;
+let orbAngle = 0;
+let keys = [];
+let keysCollected = 0;
+let totalKeys = 3;
+let exitCell = null;
+let exitVisible = false;
+let wallPulse = null;
+let fadeAlpha = 1;
+let fadingIn = true;
+let fadingOut = false;
+let fadeCallback = null;
+let lastTimeStamp = 0;
+let moveSpeed = 5;
+let input = { up: false, down: false, left: false, right: false };
+let messageOpen = false;
+let exiting = false;
+
+/* ============ RANDOM FLICKER (max 8 / level) ============ */
+let flickerActive = false;
+let flickerPattern = null;
+let flickerStart = 0;
+let flickerDuration = 0;
+let flickersTriggered = 0;
+let nextFlickerTime = 0;
+
+const flickerPatterns = [
+  { name: "fast", duration: 300, fn: t => (Math.sin(t * 40) > 0 ? 0 : 1) },
+  { name: "fast-slow-fast-slow", duration: 1300, fn: t => (Math.sin(t * 20) + Math.sin(t * 5) > 0 ? 0 : 1) },
+  { name: "fast-fast-slow-slow", duration: 700, fn: t => (Math.sin(t * 25) + Math.sin(t * 3) > 0 ? 0 : 1) },
+  { name: "slow-slow-fast-slow", duration: 1800, fn: t => (Math.sin(t * 4) + Math.sin(t * 12) > 0 ? 0 : 1) }
+];
+
+function scheduleNextFlicker() {
+  if (flickersTriggered >= 8) return;
+  nextFlickerTime = performance.now() + (2000 + Math.random() * 8000);
+}
+
+function triggerFlicker() {
+  if (flickerActive || flickersTriggered >= 8) return;
+  flickersTriggered++;
+  const p = flickerPatterns[Math.floor(Math.random() * flickerPatterns.length)];
+  flickerPattern = p;
+  flickerDuration = p.duration;
+  flickerStart = performance.now();
+  flickerActive = true;
+  scheduleNextFlicker();
+}
+
+/* ============ TEXT ============ */
+const keyMessages = [
+[
+    "The wall is not an obstacle; it is a boundary of the self.",
+    "To touch the wall is to know where you end and the void begins.",
+    "Every dead end is a conversation concluded.",
+    "The maze does not imprison; it provides a shape to the journey.",
+    "A wall is merely a slow-moving thought.",
+    "Darkness in the corridor is the light of the unmanifest.",
+    "The height of the wall is determined by the depth of your fear.",
+    "Do not curse the stone; it is the only thing holding the roof of heaven.",
+    "A corner is a decision waiting to be made.",
+    "If there were no walls, there would be no path.",
+    "The shortest distance between two points is the one that transforms you.",
+    "To stand still is to become a part of the architecture.",
+    "The maze is a mirror folded upon itself.",
+    "Every step is a departure and an arrival.",
+    "The center is not a place, but a state of equilibrium.",
+    "To find the exit, you must first stop wanting to leave.",
+    "Movement is the only constant in a static world.",
+    "To double back is to meet your former self as a stranger.",
+    "Silence in the maze is the sound of the universe thinking.",
+    "The echo of your footsteps is the maze’s only advice.",
+    "To see the whole maze is to cease to exist within it.",
+    "Distrust the straight line; it is a lure for the unimaginative.",
+    "The wind in the maze carries the scent of every possible future.",
+    "Your name is a sound that the walls do not recognize.",
+    "To lose your way is to find your soul.",
+    "The self is the thread; the maze is the needle.",
+    "You do not walk through the maze; the maze walks through you.",
+    "Your shadow is the only companion that never lies.",
+    "The maze has no beginning; it only has entrances.",
+    "To find the source, you must become the flow.",
+    "The dust on the floor is the debris of failed certainties.",
+    "The maze is a womb, not a tomb.",
+    "Nothing is hidden; you are simply unseeing.",
+    "The maze is open because your heart is closed.",
+    "A mirror is a wall that has learned to lie with the truth.",
+    "In a room of mirrors, the only way out is to close your eyes.",
+    "Every reflection is a draft of a person you might have been."
+  ],
+  [
+    "A reflection has no weight, yet it can anchor a soul.",
+    "Symmetry is the graveyard of original thought.",
+    "To walk toward your reflection is to walk away from your center.",
+    "The mirror does not judge; it only repeats your mistakes.",
+    "The sharper the turn, the deeper the insight.",
+    "Round corridors lead to the madness of the circle.",
+    "Dust is the only thing that moves without intent.",
+    "The stone is not silent; it is simply vibrating at the frequency of patience.",
+    "Sand on the floor is the debris of time.",
+    "Hunger is a compass pointing toward the void.",
+    "Blindness is the ultimate gift for the one who seeks the internal path.",
+    "Carry nothing, and the maze cannot hold you.",
+    "Empty space is the only thing that cannot be broken.",
+    "To be nothing is to be everywhere.",
+    "If you cannot find the center, become the center.",
+    "Absence is a presence that does not demand space.",
+    "The ultimate destination is the realization that there is nowhere to go.",
+    "To find the secret, forget the question.",
+    "A closed door is a question; an open door is an invitation to more questions.",
+    "Only the light that you bring with you will help you see.",
+    "A straight corridor is a test of your internal drift.",
+    "To count your steps is to build a cage of numbers.",
+    "A blind alley is a sanctuary for the weary ego.",
+    "The floor is the only honest thing in the labyrinth.",
+    "The maze is a skeleton of a god that never was.",
+    "Dreams in the labyrinth are just different corridors.",
+    "The maze is a conversation you are having with your own shadow.",
+    "The maze is a mirror that has been folded into a cube.",
+    "The light of the maze is the light of your own shedding skin.",
+    "To linger is to become the dust you walk upon.",
+    "To find the path, you must stop looking at the ground.",
+    "The maze is the only temple that requires no priest.",
+    "Perception is a chisel; it shapes the maze as you see it.",
+    "To turn back is to admit that time exists.",
+    "The maze is a library where the books are made of silence.",
+    "The maze is a spiral disguised as a square.",
+    "Existence is a pattern of interference in the void."
+  ],
+  [
+    "The maze is the pattern. To break the pattern is to see the void. To see the void is to be the void.",
+    "The maze is a test of your ability to be bored.",
+    "In the boredom, the spirit wakes up.",
+    "The maze is your own mind projected onto the void.",
+    "The desert is a maze with all the walls laid flat.",
+    "The maze is a loop. The loop is a circle. The circle is a point. The point is nothing. Nothing is everything. Everything is the maze.",
+    "The maze is a furnace for the ego.",
+    "What you seek is currently seeking you, but you are both in different corridors.",
+    "Time is the friction that turns pride into humility.",
+    "If you wait long enough, the maze will walk away from you.",
+    "The silence beyond is not the absence of sound, but the presence of the Source.",
+    "The maze is a library of every choice you never made.",
+    "Follow the shadow when the light is behind you; follow the light when the shadow is gone.",
+    "Fear is the lock; curiosity is the key; detachment is the open door.",
+    "To find the inner child, look into the mirror of the void.",
+    "Confusion is the cement of the labyrinth.",
+    "Seek the discomfort of the new corridor.",
+    "The maze is a question asked by the void. Your life is the answer.",
+    "A seed does not exit the shell; it breaks it.",
+    "Roots find the truth in the dark; branches find the truth in the light.",
+    "There is nothing outside the maze because there is no outside.",
+    "Be the tree that breaks",
+    "To shatter a reflection is to multiply the illusion.",
+    "The eternal traveler is the only eternal being.",
+    "A crumbling maze is a sign of a waking mind.",
+    "The maze is a machine that converts time into wisdom.",
+    "Be the maze. Be free of its boundaries.",
+    "The maze is a cradle, not a cage.",
+    "The maze is a song. Be the silence between the notes.",
+    "Be empty, be strong, be silent.",
+    "You are currently walking on the reflection of your own potential.",
+    "To speak of the maze is to build another corridor.",
+    "Trust the intuition of the bone.",
+    "A door that opens only one way is a teacher of finality.",
+    "The threshold is the only sacred space in the maze.",
+    "Your memories are the markings on the wall you should not trust.",
+    "Nothing is everything. Everything is the maze."
+  ]
+];
+
+const wallMessages = [
+  "Existence is a bridge, not a dwelling place.",
+  "The moment is the only truth; the past is a ghost, the future a dream.",
+  "Silence is the loudest word of the soul.",
+  "All things are in motion, even the stones.",
+  "Reality is the shadow cast by the infinite.",
+  "Existence is a mirror reflecting nothing back at itself.",
+  "A thought is a ripple; the mind is the pond.",
+  "Seek not the answer, but the clarity to see the question.",
+  "To know a thing, you must become its absence.",
+  "The focused mind pierces the veil of chaos.",
+  "The eye sees only what the mind allows.",
+  "To see the sun, you must first endure the dark.",
+  "Die before you die, so that you may truly live.",
+  "Hunger is the teacher of the sated.",
+  "Solitude is the laboratory of the spirit.",
+  "Your name is a cage.",
+  "Beneath the skin, we are all the same light.",
+  "Every ending is a hidden beginning.",
+  "Seek the pattern, not the pieces.",
+  "Finality is an illusion of the finite mind.",
+  "All paths lead to the same stillness.",
+  "To seek a beginning is to deny the circle.",
+  "Existence is a constant falling; grace is the realization that there is no ground.",
+  "The stars are the eyes of the void, watching itself wake up.",
+  "To name a shadow is to forget the light that cast it.",
+  "Silence is the only language that cannot be translated into a lie.",
+  "To perceive the flow, one must first stop trying to dam the river.",
+  "The universe is not a thing to be understood, but an experience",
+  "Existence is not a state of being, but a state of becoming.",
+  "Form is the mask of the formless",
+  "Survival is the ability to swim in a sea of change without becoming the salt.",
+  "The most difficult terrain to cross is the distance between two thoughts.",
+  "To wait is to be in time; to act is to be time.",
+  "Every breath is a negotiation with the void.",
+  "What you hold tightly, you lose; what you release, you become.",
+  "To find the center, one must first admit there is no edge.",
+  "Life is a temporary knot in the flow of time; death is the untying."
+];
+
+/* ============ UI ============ */
+function showMessage(title, text, onClose) {
+  messageTitle.textContent = title;
+  messageText.textContent = text;
+  messageBox.style.display = "block";
+  messageOpen = true;
+  messageClose.onclick = () => {
+    messageBox.style.display = "none";
+    messageOpen = false;
+    if (onClose) onClose();
+  };
+}
+
+/* ============ MAZE GEN ============ */
+function generateMaze() {
+  const base = 12;
+  cols = base + level * 2;
+  rows = Math.round((cols * 9) / 16);
+  if (rows < 8) rows = 8;
+  cellSize = Math.min(canvas.width / cols, canvas.height / rows);
+
+  maze = [];
+  for (let y = 0; y < rows; y++) {
+    const row = [];
+    for (let x = 0; x < cols; x++) {
+      row.push({
+        x, y,
+        visited: false,
+        walls: { top: true, right: true, bottom: true, left: true },
+        style: Math.random() < 0.33 ? "dashed" : (Math.random() < 0.5 ? "dotted" : "solid")
+      });
+    }
+    maze.push(row);
+  }
+
+  function neighbors(cell) {
+    const list = [];
+    const { x, y } = cell;
+    if (y > 0) list.push(maze[y - 1][x]);
+    if (x < cols - 1) list.push(maze[y][x + 1]);
+    if (y < rows - 1) list.push(maze[y + 1][x]);
+    if (x > 0) list.push(maze[y][x - 1]);
+    return list.filter(n => !n.visited);
+  }
+
+  const stack = [];
+  const start = maze[0][0];
+  start.visited = true;
+  stack.push(start);
+
+  while (stack.length) {
+    const current = stack[stack.length - 1];
+    const nbs = neighbors(current);
+    if (!nbs.length) {
+      stack.pop();
+    } else {
+      const next = nbs[Math.floor(Math.random() * nbs.length)];
+      if (next.x === current.x && next.y === current.y - 1) {
+        current.walls.top = false;
+        next.walls.bottom = false;
+      } else if (next.x === current.x + 1 && next.y === current.y) {
+        current.walls.right = false;
+        next.walls.left = false;
+      } else if (next.x === current.x && next.y === current.y + 1) {
+        current.walls.bottom = false;
+        next.walls.top = false;
+      } else if (next.x === current.x - 1 && next.y === current.y) {
+        current.walls.left = false;
+        next.walls.right = false;
+      }
+      next.visited = true;
+      stack.push(next);
+    }
+  }
+}
+
+/* ============ LEVEL SETUP ============ */
+function randomFloorCell() {
+  return {
+    x: Math.floor(Math.random() * cols),
+    y: Math.floor(Math.random() * rows)
+  };
+}
+
+function generateSecureRandomLetters(length = 3) {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const maxValid = Math.floor(0xFFFFFFFF / letters.length) * letters.length;
+  let result = '';
+
+  while (result.length < length) {
+    const array = new Uint32Array(1);
+    crypto.getRandomValues(array);
+
+    if (array[0] < maxValid) {
+      result += letters[array[0] % letters.length];
+    }
+  }
+
+  return result;
+}
+
+function getCrypto() {
+  if (typeof crypto !== "undefined") return crypto;
+  return require("crypto").webcrypto;
+}
+
+function secureRandomInt(max) {
+  const cryptoObj = getCrypto();
+  const maxUint32 = 0xFFFFFFFF;
+  const limit = Math.floor(maxUint32 / max) * max;
+
+  while (true) {
+    const array = new Uint32Array(1);
+    cryptoObj.getRandomValues(array);
+
+    if (array[0] < limit) {
+      return array[0] % max;
+    }
+  }
+}
+
+// Generate coordinate inside a 4D cube (tesseract)
+// the return format is x,y,z,w
+function generateTesseractCoordinate(size = 10) {
+  return `${secureRandomInt(size)}${secureRandomInt(size)}${secureRandomInt(size)}-${secureRandomInt(size)}`;
+}
+
+function generateRandomFormattedNumber() {
+  function randomDigits(length) {
+    return Math.floor(Math.random() * Math.pow(10, length))
+      .toString()
+      .padStart(length, '0');
+  }
+
+  const part1 = randomDigits(3);
+  const part2 = randomDigits(2);
+  const part3 = randomDigits(1);
+
+  return `${part1}-${part2}/${part3}`;
+}
+
+function setupLevel() {
+  generateMaze();
+
+  
+
+  const corners = [
+    { x: 0, y: 0 },
+    { x: cols - 1, y: 0 },
+    { x: cols - 1, y: rows - 1 },
+    { x: 0, y: rows - 1 }
+  ];
+  const spawn = corners[Math.floor(Math.random() * corners.length)];
+  player.x = spawn.x + 0.5;
+  player.y = spawn.y + 0.5;
+  playerVisible = true;
+  exiting = false;
+
+  keys = [];
+  keysCollected = 0;
+  const used = new Set();
+  used.add(spawn.x + "," + spawn.y);
+
+  for (let i = 0; i < totalKeys; i++) {
+    let cell;
+    do {
+      cell = randomFloorCell();
+    } while (used.has(cell.x + "," + cell.y));
+    used.add(cell.x + "," + cell.y);
+    keys.push({
+      x: cell.x + 0.5,
+      y: cell.y + 0.5,
+      collected: false,
+      visible: i === 0
+    });
+  }
+
+  let exit;
+  do {
+    exit = randomFloorCell();
+  } while (used.has(exit.x + "," + exit.y));
+  exitCell = { x: exit.x + 0.5, y: exit.y + 0.5 };
+  exitVisible = false;
+
+  const wx = Math.floor(Math.random() * cols);
+  const wy = Math.floor(Math.random() * rows);
+  const sides = ["top", "right", "bottom", "left"];
+  wallPulse = { x: wx, y: wy, side: sides[Math.floor(Math.random() * sides.length)] };
+
+  flickerActive = false;
+  flickerPattern = null;
+  flickersTriggered = 0;
+  scheduleNextFlicker();
+
+  //levelLabel.textContent = "Room " + level;
+  //levelLabel.textContent = "Room " +generateSecureRandomLetters()+""+ generateRandomFormattedNumber();
+  levelLabel.textContent = "Room " +generateSecureRandomLetters()+" "+ generateTesseractCoordinate(5);
+  startFadeIn();
+}
+
+/* ============ FADE ============ */
+function startFadeIn() {
+  fadeAlpha = 1;
+  fadingIn = true;
+  fadingOut = false;
+  fadeCallback = null;
+}
+function startFadeOut(cb) {
+  fadeAlpha = 0;
+  fadingOut = true;
+  fadingIn = false;
+  fadeCallback = cb || null;
+}
+function updateFade(dt) {
+  const speed = 1.5;
+  if (fadingIn) {
+    fadeAlpha -= dt / 1000 / speed;
+    if (fadeAlpha <= 0) {
+      fadeAlpha = 0;
+      fadingIn = false;
+    }
+  } else if (fadingOut) {
+    fadeAlpha += dt / 1000 / speed;
+    if (fadeAlpha >= 1) {
+      fadeAlpha = 1;
+      fadingOut = false;
+      if (fadeCallback) {
+        const cb = fadeCallback;
+        fadeCallback = null;
+        cb();
+      }
+    }
+  }
+}
+function drawFadeOverlay() {
+  if (!fadingIn && !fadingOut) return;
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0," + fadeAlpha.toFixed(3) + ")";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+}
+
+/* ============ INPUT ============ */
+window.addEventListener("keydown", e => {
+  if (messageOpen || exiting) return;
+  if (["ArrowUp","w","W"].includes(e.key)) input.up = true;
+  if (["ArrowDown","s","S"].includes(e.key)) input.down = true;
+  if (["ArrowLeft","a","A"].includes(e.key)) input.left = true;
+  if (["ArrowRight","d","D"].includes(e.key)) input.right = true;
+});
+window.addEventListener("keyup", e => {
+  if (["ArrowUp","w","W"].includes(e.key)) input.up = false;
+  if (["ArrowDown","s","S"].includes(e.key)) input.down = false;
+  if (["ArrowLeft","a","A"].includes(e.key)) input.left = false;
+  if (["ArrowRight","d","D"].includes(e.key)) input.right = false;
+});
+
+/* ============ COLLISION ============ */
+function getCell(x, y) {
+  const cx = Math.floor(x);
+  const cy = Math.floor(y);
+  if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) return null;
+  return maze[cy][cx];
+}
+
+function moveWithCollision(dx, dy) {
+  const r = playerRadius;
+
+  if (dx !== 0) {
+    let newX = player.x + dx;
+    const cy = Math.floor(player.y);
+    const cx = Math.floor(player.x);
+
+    if (dx > 0) {
+      const cell = getCell(cx, cy);
+      if (cell && cell.walls.right) {
+        const limit = (cx + 1) - r;
+        if (newX > limit) newX = limit;
+      }
+    } else {
+      const cell = getCell(cx, cy);
+      if (cell && cell.walls.left) {
+        const limit = cx + r;
+        if (newX < limit) newX = limit;
+      }
+    }
+
+    newX = Math.max(r, Math.min(cols - r, newX));
+    player.x = newX;
+  }
+
+  if (dy !== 0) {
+    let newY = player.y + dy;
+    const cx = Math.floor(player.x);
+    const cy = Math.floor(player.y);
+
+    if (dy > 0) {
+      const cell = getCell(cx, cy);
+      if (cell && cell.walls.bottom) {
+        const limit = (cy + 1) - r;
+        if (newY > limit) newY = limit;
+      }
+    } else {
+      const cell = getCell(cx, cy);
+      if (cell && cell.walls.top) {
+        const limit = cy + r;
+        if (newY < limit) newY = limit;
+      }
+    }
+
+    newY = Math.max(r, Math.min(rows - r, newY));
+    player.y = newY;
+  }
+}
+
+/* ============ UPDATE PLAYER ============ */
+function updatePlayer(dt) {
+  if (messageOpen || exiting) return;
+
+  let vx = 0, vy = 0;
+  if (input.up) vy -= 1;
+  if (input.down) vy += 1;
+  if (input.left) vx -= 1;
+  if (input.right) vx += 1;
+
+  if (vx !== 0 || vy !== 0) {
+    const len = Math.hypot(vx, vy);
+    vx /= len; vy /= len;
+    const move = (moveSpeed * dt) / (1000 / 60);
+    const step = move / cellSize;
+    moveWithCollision(vx * step, vy * step);
+  }
+
+  orbAngle += dt * 0.002;
+
+  keys.forEach((k, idx) => {
+    if (!k.collected && k.visible) {
+      const dx = k.x - player.x;
+      const dy = k.y - player.y;
+      if (Math.hypot(dx, dy) < 0.3) {
+        k.collected = true;
+        keysCollected++;
+        if (keysCollected < totalKeys) {
+          const next = keys.find(kk => !kk.collected && !kk.visible);
+          if (next) next.visible = true;
+        } else {
+          exitVisible = true;
+        }
+        const msgArray = keyMessages[Math.min(idx, keyMessages.length - 1)];
+        const msg = msgArray[Math.floor(Math.random() * msgArray.length)];
+        showMessage("Key " + (idx + 1), msg);
+      }
+    }
+  });
+
+  if (exitVisible && exitCell && !exiting) {
+    const dx2 = exitCell.x - player.x;
+    const dy2 = exitCell.y - player.y;
+    if (Math.hypot(dx2, dy2) < 0.4) {
+      exiting = true;
+      playerVisible = false;
+      startFadeOut(() => {
+        level++;
+        setupLevel();
+      });
+    }
+  }
+
+  if (wallPulse) {
+    const dx3 = (wallPulse.x + 0.5) - player.x;
+    const dy3 = (wallPulse.y + 0.5) - player.y;
+    if (Math.hypot(dx3, dy3) < 1.2) {
+      const msg = wallMessages[Math.floor(Math.random() * wallMessages.length)];
+      showMessage("The walls are whispering...", msg);
+      wallPulse = null;
+    }
+  }
+}
+
+/* ============ DRAW HELPERS ============ */
+function drawKeyShape(px, py, r, t) {
+  const pulse = 0.9 + 0.1 * Math.sin(t * 0.5);
+  const size = r * pulse;
+
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#4af";
+  ctx.shadowColor = "#4af";
+  ctx.shadowBlur = 10;
+
+  ctx.beginPath();
+  ctx.arc(0, 0, size * 0.5, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(size * 0.5, 0);
+  ctx.lineTo(size * 1.4, 0);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(size * 1.4, 0);
+  ctx.lineTo(size * 1.4, size * 0.3);
+  ctx.moveTo(size * 1.2, 0);
+  ctx.lineTo(size * 1.2, -size * 0.3);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+/* ============ DRAW MAZE & ENTITIES ============ */
+function drawMaze() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(
+    (canvas.width - cols * cellSize) / 2,
+    (canvas.height - rows * cellSize) / 2
+  );
+
+  const now = performance.now();
+  const t = now / 1000;
+
+  if (!flickerActive && flickersTriggered < 8 && now >= nextFlickerTime) {
+    triggerFlicker();
+  }
+  if (flickerActive) {
+    const elapsed = now - flickerStart;
+    if (elapsed >= flickerDuration) {
+      flickerActive = false;
+    }
+  }
+
+  const slowFlicker = 0.75 + 0.25 * Math.sin(t * 0.7);
+  let wallsVisibleFactor = 1;
+  if (flickerActive && flickerPattern) {
+    const localT = (now - flickerStart) / 1000;
+    wallsVisibleFactor = flickerPattern.fn(localT);
+  }
+  const globalFlicker = slowFlicker * wallsVisibleFactor;
+
+  if (wallsVisibleFactor > 0.01) {
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const cell = maze[y][x];
+        const px = x * cellSize;
+        const py = y * cellSize;
+
+        const alpha = cell.style === "solid" ? wallsVisibleFactor : globalFlicker;
+        ctx.strokeStyle = "rgba(200,200,200," + alpha + ")";
+        ctx.lineWidth = 2;
+        ctx.shadowColor = "rgba(255,255,255," + (0.2 * alpha) + ")";
+        ctx.shadowBlur = 4;
+
+        if (cell.style === "dashed") {
+          ctx.setLineDash([cellSize * 0.2, cellSize * 0.15]);
+        } else if (cell.style === "dotted") {
+          ctx.setLineDash([2, cellSize * 0.18]);
+        } else {
+          ctx.setLineDash([]);
+        }
+
+        ctx.beginPath();
+        if (cell.walls.top) {
+          ctx.moveTo(px, py);
+          ctx.lineTo(px + cellSize, py);
+        }
+        if (cell.walls.right) {
+          ctx.moveTo(px + cellSize, py);
+          ctx.lineTo(px + cellSize, py + cellSize);
+        }
+        if (cell.walls.bottom) {
+          ctx.moveTo(px + cellSize, py + cellSize);
+          ctx.lineTo(px, py + cellSize);
+        }
+        if (cell.walls.left) {
+          ctx.moveTo(px, py + cellSize);
+          ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    const pcx = Math.floor(player.x);
+    const pcy = Math.floor(player.y);
+    const radius = 1;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(255,255,255," + wallsVisibleFactor + ")";
+    ctx.shadowColor = "rgba(255,255,200," + (0.7 * wallsVisibleFactor) + ")";
+    ctx.shadowBlur = 10;
+    ctx.setLineDash([]);
+
+    for (let y = pcy - radius; y <= pcy + radius; y++) {
+      for (let x = pcx - radius; x <= pcx + radius; x++) {
+        if (x < 0 || y < 0 || x >= cols || y >= rows) continue;
+        const cell = maze[y][x];
+        const px = x * cellSize;
+        const py = y * cellSize;
+        ctx.beginPath();
+        if (cell.walls.top) {
+          ctx.moveTo(px, py);
+          ctx.lineTo(px + cellSize, py);
+        }
+        if (cell.walls.right) {
+          ctx.moveTo(px + cellSize, py);
+          ctx.lineTo(px + cellSize, py + cellSize);
+        }
+        if (cell.walls.bottom) {
+          ctx.moveTo(px + cellSize, py + cellSize);
+          ctx.lineTo(px, py + cellSize);
+        }
+        if (cell.walls.left) {
+          ctx.moveTo(px, py + cellSize);
+          ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+    }
+
+    if (wallPulse) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 4);
+      const px = wallPulse.x * cellSize;
+      const py = wallPulse.y * cellSize;
+      ctx.save();
+      ctx.shadowColor = "rgba(180, 80, 255," + (0.7 * pulse * wallsVisibleFactor) + ")";
+      ctx.shadowBlur = 20;
+      ctx.strokeStyle = "rgba(200, 120, 255," + (0.9 * wallsVisibleFactor) + ")";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      if (wallPulse.side === "top") {
+        ctx.moveTo(px, py);
+        ctx.lineTo(px + cellSize, py);
+      } else if (wallPulse.side === "right") {
+        ctx.moveTo(px + cellSize, py);
+        ctx.lineTo(px + cellSize, py + cellSize);
+      } else if (wallPulse.side === "bottom") {
+        ctx.moveTo(px + cellSize, py + cellSize);
+        ctx.lineTo(px, py + cellSize);
+      } else if (wallPulse.side === "left") {
+        ctx.moveTo(px, py + cellSize);
+        ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  keys.forEach(k => {
+    if (!k.collected && k.visible) {
+      const kx = k.x * cellSize;
+      const ky = k.y * cellSize;
+      drawKeyShape(kx, ky, cellSize * 0.35, t);
+    }
+  });
+
+  if (exitVisible && exitCell) {
+    const ex = exitCell.x * cellSize;
+    const ey = exitCell.y * cellSize;
+    const r = cellSize * 0.35;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3);
+    ctx.save();
+    const grad = ctx.createRadialGradient(ex, ey, r * 0.2, ex, ey, r);
+    grad.addColorStop(0, "rgba(255,80,80,1)");
+    grad.addColorStop(1, "rgba(120,0,0,0)");
+    ctx.fillStyle = grad;
+    ctx.globalAlpha = 0.7 + 0.3 * pulse;
+    ctx.beginPath();
+    ctx.arc(ex, ey, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  if (playerVisible) {
+    const pxPlayer = player.x * cellSize;
+    const pyPlayer = player.y * cellSize;
+    const orbPulse = 0.9 + 0.1 * Math.sin(t * 2);
+    const orbR = playerRadius * cellSize * orbPulse;
+
+    ctx.save();
+    ctx.translate(pxPlayer, pyPlayer);
+    ctx.shadowColor = "rgba(255, 230, 120, 0.4)";
+    ctx.shadowBlur = 10;
+    const orbGrad = ctx.createRadialGradient(0, 0, orbR * 0.2, 0, 0, orbR);
+    orbGrad.addColorStop(0, "rgba(255,255,180,1)");
+    orbGrad.addColorStop(1, "rgba(255,210,80,0.05)");
+    ctx.fillStyle = orbGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, orbR, 0, Math.PI * 2);
+    ctx.fill();
+
+    const orbitRadius = orbR * 1.4;
+    const ox = Math.cos(orbAngle) * orbitRadius;
+    const oy = Math.sin(orbAngle) * orbitRadius;
+    const smallR = orbR * 0.35;
+    const smallGrad = ctx.createRadialGradient(ox, oy, smallR * 0.2, ox, oy, smallR);
+    smallGrad.addColorStop(0, "rgba(200,255,255,1)");
+    smallGrad.addColorStop(1, "rgba(120,200,255,0.05)");
+    ctx.fillStyle = smallGrad;
+    ctx.beginPath();
+    ctx.arc(ox, oy, smallR, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+/* ============ LOOP ============ */
+function loop(timestamp) {
+  if (!lastTimeStamp) lastTimeStamp = timestamp;
+  const dt = timestamp - lastTimeStamp;
+  lastTimeStamp = timestamp;
+
+  updatePlayer(dt);
+  updateFade(dt);
+  drawMaze();
+  drawFadeOverlay();
+
+  requestAnimationFrame(loop);
+}
+
+setupLevel();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

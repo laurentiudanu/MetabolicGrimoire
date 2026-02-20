@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Maze Aura Game</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    background: #000;
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<script>
+/* ============================================================
+   INITIAL SETUP
+============================================================ */
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let viewWidth, viewHeight, gameWidth, gameHeight, offsetX, offsetY;
+
+function resize() {
+  viewWidth = window.innerWidth;
+  viewHeight = window.innerHeight;
+
+  const aspect = 16 / 9;
+  if (viewWidth / viewHeight > aspect) {
+    gameHeight = viewHeight;
+    gameWidth = gameHeight * aspect;
+  } else {
+    gameWidth = viewWidth;
+    gameHeight = gameWidth / aspect;
+  }
+
+  offsetX = (viewWidth - gameWidth) / 2;
+  offsetY = (viewHeight - gameHeight) / 2;
+
+  canvas.width = viewWidth;
+  canvas.height = viewHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+/* ============================================================
+   GAME STATE
+============================================================ */
+const mazeCols = 25;
+const mazeRows = 14;
+let cellSize;
+
+let level = 1;
+let maze = [];
+
+let startCell = { c: 0, r: 0 };
+let endCell = { c: mazeCols - 1, r: mazeRows - 1 };
+
+let player = {
+  x: 0,
+  y: 0,
+  radius: 120,
+  minRadius: 40,
+  maxRadius: 220,
+  walkSpeed: 2,
+  runSpeed: 4,
+  isRunning: false,
+  lastMoveTime: 0
+};
+
+let keys = {};
+let interactiveCells = [];
+let solutionOrder = [];
+let activatedOrder = [];
+
+let fade = {
+  active: false,
+  alpha: 0,
+  direction: 1,
+  onComplete: null
+};
+
+/* ============================================================
+   INPUT
+============================================================ */
+window.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.key === "Enter") tryActivate();
+});
+window.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+/* ============================================================
+   MAZE GENERATION
+============================================================ */
+function generateMaze(cols, rows) {
+  const grid = [];
+  for (let r = 0; r < rows; r++) {
+    const row = [];
+    for (let c = 0; c < cols; c++) {
+      row.push({
+        c, r,
+        visited: false,
+        walls: { top: true, right: true, bottom: true, left: true }
+      });
+    }
+    grid.push(row);
+  }
+
+  function neighbors(cell) {
+    const list = [];
+    const { c, r } = cell;
+    if (r > 0) list.push(grid[r - 1][c]);
+    if (c < cols - 1) list.push(grid[r][c + 1]);
+    if (r < rows - 1) list.push(grid[r + 1][c]);
+    if (c > 0) list.push(grid[r][c - 1]);
+    return list.filter(n => !n.visited);
+  }
+
+  const stack = [];
+  let current = grid[0][0];
+  current.visited = true;
+  stack.push(current);
+
+  while (stack.length > 0) {
+    current = stack[stack.length - 1];
+    const ns = neighbors(current);
+
+    if (ns.length === 0) {
+      stack.pop();
+    } else {
+      const next = ns[Math.floor(Math.random() * ns.length)];
+
+      if (next.r === current.r - 1) {
+        current.walls.top = false;
+        next.walls.bottom = false;
+      } else if (next.c === current.c + 1) {
+        current.walls.right = false;
+        next.walls.left = false;
+      } else if (next.r === current.r + 1) {
+        current.walls.bottom = false;
+        next.walls.top = false;
+      } else if (next.c === current.c - 1) {
+        current.walls.left = false;
+        next.walls.right = false;
+      }
+
+      next.visited = true;
+      stack.push(next);
+    }
+  }
+
+  return grid;
+}
+
+/* ============================================================
+   BFS PATHFINDING (ENSURE SOLVABLE)
+============================================================ */
+function bfsPath(grid, start, end) {
+  const rows = grid.length;
+  const cols = grid[0].length;
+
+  const queue = [];
+  const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+  const parent = Array.from({ length: rows }, () => Array(cols).fill(null));
+
+  queue.push(start);
+  visited[start.r][start.c] = true;
+
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    if (cur.c === end.c && cur.r === end.r) break;
+
+    const cell = grid[cur.r][cur.c];
+    const w = cell.walls;
+
+    if (!w.top && cur.r > 0 && !visited[cur.r - 1][cur.c]) {
+      visited[cur.r - 1][cur.c] = true;
+      parent[cur.r - 1][cur.c] = cur;
+      queue.push({ c: cur.c, r: cur.r - 1 });
+    }
+    if (!w.right && cur.c < cols - 1 && !visited[cur.r][cur.c + 1]) {
+      visited[cur.r][cur.c + 1] = true;
+      parent[cur.r][cur.c + 1] = cur;
+      queue.push({ c: cur.c + 1, r: cur.r });
+    }
+    if (!w.bottom && cur.r < rows - 1 && !visited[cur.r + 1][cur.c]) {
+      visited[cur.r + 1][cur.c] = true;
+      parent[cur.r + 1][cur.c] = cur;
+      queue.push({ c: cur.c, r: cur.r + 1 });
+    }
+    if (!w.left && cur.c > 0 && !visited[cur.r][cur.c - 1]) {
+      visited[cur.r][cur.c - 1] = true;
+      parent[cur.r][cur.c - 1] = cur;
+      queue.push({ c: cur.c - 1, r: cur.r });
+    }
+  }
+
+  const path = [];
+  let cur = end;
+  while (cur) {
+    path.push(cur);
+    cur = parent[cur.r][cur.c];
+  }
+  return path.reverse();
+}
+
+/* ============================================================
+   INTERACTIVE CELLS
+============================================================ */
+function generateInteractiveCells(path) {
+  interactiveCells = [];
+  activatedOrder = [];
+
+  const candidates = path.slice(1, path.length - 1);
+  const chosen = [];
+
+  const count = Math.min(6, candidates.length);
+  while (chosen.length < count && candidates.length > 0) {
+    const idx = Math.floor(Math.random() * candidates.length);
+    chosen.push(candidates.splice(idx, 1)[0]);
+  }
+
+  const used = new Set();
+  function uniqueNum() {
+    let n;
+    do n = Math.floor(Math.random() * 90) + 10;
+    while (used.has(n));
+    used.add(n);
+    return n;
+  }
+
+  chosen.forEach(cell => {
+    const a = uniqueNum();
+    const b = uniqueNum();
+    interactiveCells.push({
+      c: cell.c,
+      r: cell.r,
+      label: `${a} - ${b}`,
+      activated: false
+    });
+  });
+
+  solutionOrder = [...interactiveCells.keys()];
+  for (let i = solutionOrder.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [solutionOrder[i], solutionOrder[j]] = [solutionOrder[j], solutionOrder[i]];
+  }
+}
+
+function tryActivate() {
+  const pc = Math.floor(player.x / cellSize);
+  const pr = Math.floor(player.y / cellSize);
+
+  const idx = interactiveCells.findIndex(ic => ic.c === pc && ic.r === pr);
+  if (idx === -1) return;
+
+  const expected = solutionOrder[activatedOrder.length];
+
+  if (idx === expected) {
+    interactiveCells[idx].activated = true;
+    activatedOrder.push(idx);
+
+    if (activatedOrder.length === solutionOrder.length) {
+      startFadeOut(() => {
+        level++;
+        initLevel();
+        startFadeIn();
+      });
+    }
+  } else {
+    interactiveCells.forEach(ic => (ic.activated = false));
+    activatedOrder = [];
+  }
+}
+
+/* ============================================================
+   FADE EFFECT
+============================================================ */
+function startFadeOut(cb) {
+  fade.active = true;
+  fade.direction = 1;
+  fade.alpha = 0;
+  fade.onComplete = cb;
+}
+function startFadeIn() {
+  fade.active = true;
+  fade.direction = -1;
+  fade.alpha = 1;
+  fade.onComplete = null;
+}
+
+/* ============================================================
+   LEVEL INIT
+============================================================ */
+function initLevel() {
+  maze = generateMaze(mazeCols, mazeRows);
+  const path = bfsPath(maze, startCell, endCell);
+  generateInteractiveCells(path);
+
+  player.x = (startCell.c + 0.5) * (gameWidth / mazeCols);
+  player.y = (startCell.r + 0.5) * (gameHeight / mazeRows);
+  player.radius = 120;
+  player.lastMoveTime = performance.now();
+}
+
+initLevel();
+startFadeIn();
+
+/* ============================================================
+   MOVEMENT + AURA
+============================================================ */
+function updatePlayer(dt) {
+  const now = performance.now();
+  let dx = 0, dy = 0;
+
+  if (keys["arrowup"] || keys["w"]) dy -= 1;
+  if (keys["arrowdown"] || keys["s"]) dy += 1;
+  if (keys["arrowleft"] || keys["a"]) dx -= 1;
+  if (keys["arrowright"] || keys["d"]) dx += 1;
+
+  player.isRunning = keys["shift"];
+
+  const len = Math.hypot(dx, dy);
+  if (len > 0) {
+    dx /= len;
+    dy /= len;
+
+    const speed = player.isRunning ? player.runSpeed : player.walkSpeed;
+    movePlayer(dx * speed, dy * speed);
+
+    player.lastMoveTime = now;
+
+    if (player.isRunning) player.radius -= 60 * dt;
+    else player.radius -= 20 * dt;
+  } else {
+    if (now - player.lastMoveTime > 500) {
+      player.radius += 40 * dt;
+    }
+  }
+
+  player.radius = Math.max(player.minRadius, Math.min(player.maxRadius, player.radius));
+}
+
+function movePlayer(dx, dy) {
+  const newX = player.x + dx;
+  const newY = player.y + dy;
+
+  player.x = Math.max(0, Math.min(gameWidth, newX));
+  player.y = Math.max(0, Math.min(gameHeight, newY));
+}
+
+/* ============================================================
+   DRAWING
+============================================================ */
+function drawMaze() {
+  ctx.save();
+  ctx.translate(offsetX, offsetY);
+
+  ctx.strokeStyle = "#444";
+  ctx.lineWidth = 2;
+
+  for (let r = 0; r < mazeRows; r++) {
+    for (let c = 0; c < mazeCols; c++) {
+      const cell = maze[r][c];
+      const x = c * cellSize;
+      const y = r * cellSize;
+
+      const w = cell.walls;
+
+      ctx.beginPath();
+      if (w.top)    { ctx.moveTo(x, y); ctx.lineTo(x + cellSize, y); }
+      if (w.right)  { ctx.moveTo(x + cellSize, y); ctx.lineTo(x + cellSize, y + cellSize); }
+      if (w.bottom) { ctx.moveTo(x + cellSize, y + cellSize); ctx.lineTo(x, y + cellSize); }
+      if (w.left)   { ctx.moveTo(x, y + cellSize); ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+  }
+
+  /* --- Interactive cells --- */
+  const t = performance.now() / 1000;
+  interactiveCells.forEach(ic => {
+    const x = ic.c * cellSize + cellSize / 2;
+    const y = ic.r * cellSize + cellSize / 2;
+
+    const pulseSpeed = ic.activated ? 4 : 1;
+    const pulse = (Math.sin(t * pulseSpeed * 2 * Math.PI) + 1) / 2;
+
+    const radius = cellSize * (0.3 + 0.2 * pulse);
+    const color = ic.activated ? "rgba(0,255,120," : "rgba(255,40,40,";
+
+    ctx.beginPath();
+    ctx.fillStyle = color + (0.25 + 0.35 * pulse) + ")";
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#fff";
+    ctx.font = `${Math.floor(cellSize * 0.25)}px monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(ic.label, x, y);
+  });
+
+  /* --- Player (FIXED: now visible) --- */
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, cellSize * 0.25, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawAuraMask() {
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.98)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const px = offsetX + player.x;
+  const py = offsetY + player.y;
+
+  const grad = ctx.createRadialGradient(
+    px, py, player.radius * 0.1,
+    px, py, player.radius
+  );
+  grad.addColorStop(0, "rgba(255,255,255,0)");
+  grad.addColorStop(1, "rgba(0,0,0,1)");
+
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(px, py, player.radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalCompositeOperation = "source-over";
+  ctx.restore();
+}
+
+function drawUI() {
+  ctx.save();
+  ctx.translate(offsetX, offsetY);
+
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(10, 10, 320, 120);
+
+  ctx.fillStyle = "#0f0";
+  ctx.font = "16px monospace";
+
+  ctx.fillText(`Level: ${level}`, 20, 20);
+  ctx.fillText("Solution order:", 20, 40);
+
+  solutionOrder.forEach((idx, i) => {
+    const ic = interactiveCells[idx];
+    const prefix = i < activatedOrder.length ? "[x]" : "[ ]";
+    ctx.fillText(`${prefix} ${ic.label}`, 20, 60 + i * 16);
+  });
+
+  ctx.restore();
+}
+
+function drawFade(dt) {
+  if (!fade.active) return;
+
+  fade.alpha += fade.direction * dt / 1.2;
+
+  if (fade.alpha >= 1) {
+    fade.alpha = 1;
+    if (fade.onComplete) {
+      const cb = fade.onComplete;
+      fade.onComplete = null;
+      cb();
+    }
+    fade.direction = -1;
+  } else if (fade.alpha <= 0) {
+    fade.alpha = 0;
+    fade.active = false;
+  }
+
+  ctx.save();
+  ctx.fillStyle = `rgba(0,0,0,${fade.alpha})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+}
+
+/* ============================================================
+   MAIN LOOP
+============================================================ */
+let lastTime = performance.now();
+function loop(now) {
+  const dt = (now - lastTime) / 1000;
+  lastTime = now;
+
+  cellSize = Math.min(gameWidth / mazeCols, gameHeight / mazeRows);
+
+  updatePlayer(dt);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  drawMaze();
+  drawAuraMask();
+  drawUI();
+  drawFade(dt);
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+
+</body>
+</html>
