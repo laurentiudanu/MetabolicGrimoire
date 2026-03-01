@@ -2,21 +2,50 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>AZEM | Null chamber | Ossuary of unbecoming</title>
+<title>AZEM [null chamber]</title>
 <style>
+  html, body {min-height: 100vh;}
+  article, aside, details, figcaption, figure, footer, header, hgroup, menu, nav, section, summary, main {display: block;}
+  html, body, div, span, object, iframe, h1, h2, h3, h4, h5, h6, p, blockquote, pre, abbr, address, cite, code, del, dfn, em, img, ins, kbd, q, samp, small, strong, sub, sup, var, b, i, dl, dt, dd, ol, ul, li, fieldset, form, label, legend, table, caption, tbody, tfoot, thead, tr, th, td, article, aside, canvas, details, figcaption, figure, footer, header, hgroup, menu, nav, section, summary, time, mark, audio, video, main {margin: 0;padding: 0;border: 0;outline: 0;font-size: 100%;vertical-align: baseline;background: transparent;/* margin: -7px; */}
+  ol, ul {list-style:none;}
+  blockquote, q {quotes: none;}
+  blockquote:before, blockquote:after,  q:before, q:after {content:''; content:none;}
+  del {text-decoration: line-through;}
+  svg:not(:root) {overflow: hidden;}
+  abbr[title], dfn[title] {border-bottom: 1px dotted; cursor: help;}
+  table {width: 100%; border-collapse: collapse; border-spacing: 0; empty-cells: show; table-layout: fixed;}
+  input, select {vertical-align: middle;}
+  input[type="radio"] {vertical-align: text-bottom;}
+  input[type="checkbox"] {vertical-align: bottom;}
+  button, input, select, textarea {margin: 0; font-family: "Source Sans Pro", "Lucida Sans Unicode", Sora, Arial, Verdana, sans-serif;}
+  textarea {resize: none;}
+  button, html input[type="button"], input[type="reset"], input[type="submit"] {-webkit-appearance: button; cursor: pointer;}
+  button[disabled], html input[disabled] {cursor: default;}
+  input[type="checkbox"], input[type="radio"] {box-sizing: border-box; padding: 0; *height: 13px; *width: 13px;}
+  img {display: block;max-width: 100%;height: auto !important;}
+  td img {vertical-align: top;}
+  address {display: inline;}
+  code, kbd, pre, samp {font-family: monospace, serif; font-size: 16px;}
+  pre {white-space: pre; white-space: pre-wrap; word-wrap: break-word;}
+  a:hover, a:active {outline: none;}
+  a, a:hover, a:visited {text-decoration: none;}
+  iframe {display: block;max-width: 100%;height: 500px;}
+  fieldset {border: 1px solid #c0c0c0;padding: 16px;}
+  ::-webkit-input-placeholder {color: #8E8E8E; font-family: "Helvetica", Arial, sans-serif; font-size: 16px; font-weight: 700;}
+  :focus::-webkit-input-placeholder {opacity: 0.4;}
+  :-moz-placeholder {color: #8E8E8E; font-family: "Helvetica", Arial, sans-serif; font-size: 16px; font-weight: 700;}
+  :focus:-moz-placeholder {opacity: 0.4;}
+  *, *:before, *:after {-webkit-box-sizing: border-box;-moz-box-sizing: border-box;bo;box-sizing: border-box;}
   html, body {
-    margin: 0;
-    padding: 0;
     background: #000;
     overflow: hidden;
     height: 100%;
     width: 100%;
-    font-family: system-ui, sans-serif;
+    font-family: "Helvetica", Arial, sans-serif;
     color: #eee;
   }
   #gameCanvas {
     display: block;
-    margin: 0;
     background: #000;
   }
   #ui-overlay {
@@ -32,30 +61,37 @@
     transform: translateX(-50%);
     background: rgba(10, 10, 10, 0.95);
     border: 1px solid #666;
-    padding: 16px 20px;
+    padding: 24px 32px 16px 32px;
     border-radius: 8px;
     display: none;
     pointer-events: auto;
-    box-shadow: 0 0 20px rgba(0,0,0,0.8);
+    box-shadow: 0 0 24px rgba(0,0,0,0.8);
   }
   #messageBox h2 {
-    margin: 0 0 8px;
+    margin: 0 0 16px;
     font-size: 18px;
     color: #ffd54a;
   }
   #messageBox p {
-    margin: 0 0 12px;
+    margin: 0 0 24px;
     font-size: 14px;
     line-height: 1.4;
   }
   #messageBox button {
-    padding: 6px 14px;
-    border-radius: 4px;
+    border-radius: 2px;
     border: none;
     background: #ffd54a;
     color: #000;
     font-weight: 600;
     cursor: pointer;
+    width: 24px;
+    height: 24px;
+    position: absolute;
+    right: -8px;
+    top: -8px;
+    font-size: 24px;
+    text-align: center;
+    line-height: 24px;
   }
   #messageBox button:hover {
     background: #ffeb7a;
@@ -78,12 +114,29 @@
   <div id="messageBox">
     <h2 id="messageTitle"></h2>
     <p id="messageText"></p>
-    <button id="messageClose">Close</button>
+    <button id="messageClose">&times;</button>
   </div>
 </div>
 
 <script>
-(() => {
+// stian
+window.addEventListener("keyup", e => {
+  if (["Enter","Escape"].includes(e.key)) {
+    window.alert("hide message if visible");
+    if(document.querySelector("#messageBox").style.display == "block"){
+      const clsbutton = document.getElementById("messageClose");
+      const clkevent = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      });
+      clsbutton.dispatchEvent(clkevent);
+    }
+  }
+});
+
+//(() => {
+function azem(){
 /* ============ CANVAS ============ */
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -176,7 +229,7 @@ const introText = [
   "A frigid expanse of eternal nothingness.",
   "Absolute and immutable. ",
   "And in this primordial stillness, time itself it did not flow, but remained solidified, a crystalline structure, a labyrinth of twisted corridors and winding paths that stretched into an infinite beyond; a desecration of linear existence.",
-  "And to us, the mere mortals, it is known as Azem, the Null Chamber, the Ossuary of unbecoming made from whispers of a past that never was and memories of a future that had yet to come."
+  "And to us, the mere mortals, it is known as Azem, the Null Chamber, the Ossuary of Unbecoming made from whispers of a past that never was and memories of a future that had yet to come."
 ];
 const keyMessages = [
 [
@@ -960,10 +1013,21 @@ function loop(timestamp) {
 
   requestAnimationFrame(loop);
 }
+  setupLevel();
+  requestAnimationFrame(loop);
 
-setupLevel();
-requestAnimationFrame(loop);
-})();
+//})();
+}
+function gintro() {
+  messageBox.style.display = "block";
+  messageOpen = true;
+  messageClose.onclick = () => {
+    messageBox.style.display = "none";
+    messageOpen = false;
+    azem();    
+  };
+}
+gintro();
 </script>
 </body>
 </html>
