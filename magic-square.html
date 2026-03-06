@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>3x3 Magic Square Challenge</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f2f5; }
+        canvas { background: #fff; border: 4px solid #333; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        .controls { margin-top: 20px; text-align: center; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; }
+        .status { margin-top: 10px; font-weight: bold; color: #d9534f; }
+    </style>
+</head>
+<body>
+    <!-- https://gemini.google.com/app/79198c0707b9bbc6 -->
+    <h2>Magic Square: Sum to 15</h2>
+    <canvas id="gameCanvas" width="300" height="300"></canvas>
+    
+    <div class="controls">
+        <div id="message" class="status">Fill the grid so every line adds to 15!</div>
+        <br>
+        <button onclick="initGame()">New Puzzle</button>
+    </div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const msg = document.getElementById('message');
+    
+    let grid = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let initialIndices = []; // To keep track of "locked" numbers
+    let selectedCell = null;
+
+    function initGame() {
+        // A classic 3x3 magic square pattern
+        const base = [8, 1, 6, 3, 5, 7, 4, 9, 2];
+        
+        // Randomly hide 5 cells to create the puzzle
+        grid = base.map(val => (Math.random() > 0.5 ? val : 0));
+        
+        // Store which ones were pre-filled so user can't change them
+        initialIndices = grid.map((val, i) => val !== 0 ? i : -1).filter(i => i !== -1);
+        
+        msg.innerText = "Fill the zeros! (Click a cell to cycle 1-9)";
+        msg.style.color = "#333";
+        draw();
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        for (let i = 0; i < 9; i++) {
+            let x = (i % 3) * 100;
+            let y = Math.floor(i / 3) * 100;
+            
+            // Draw Cell
+            ctx.strokeStyle = "#333";
+            ctx.strokeRect(x, y, 100, 100);
+            
+            // Highlight pre-filled numbers
+            if (initialIndices.includes(i)) {
+                ctx.fillStyle = "#e9ecef";
+                ctx.fillRect(x + 2, y + 2, 96, 96);
+            }
+
+            // Draw Number
+            ctx.font = "30px Arial";
+            ctx.fillStyle = initialIndices.includes(i) ? "#000" : "#007bff";
+            let val = grid[i] === 0 ? "" : grid[i];
+            ctx.fillText(val, x + 40, y + 60);
+        }
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        
+        const col = Math.floor(mouseX / 100);
+        const row = Math.floor(mouseY / 100);
+        const index = row * 3 + col;
+
+        // Only allow changing cells that weren't pre-filled
+        if (!initialIndices.includes(index)) {
+            grid[index] = (grid[index] % 9) + 1;
+            draw();
+            checkWin();
+        }
+    });
+
+    function checkWin() {
+        if (grid.includes(0)) return;
+
+        const lines = [
+            [0,1,2], [3,4,5], [6,7,8], // Rows
+            [0,3,6], [1,4,7], [2,5,8], // Cols
+            [0,4,8], [2,4,6]           // Diagonals
+        ];
+
+        const isMagic = lines.every(line => {
+            return (grid[line[0]] + grid[line[1]] + grid[line[2]]) === 15;
+        });
+
+        // Check for duplicates (Magic squares must use unique numbers 1-9)
+        const unique = new Set(grid).size === 9;
+
+        if (isMagic && unique) {
+            msg.innerText = "🎉 Correct! You're a math wizard!";
+            msg.style.color = "#28a745";
+        } else if (!unique) {
+            msg.innerText = "Numbers must be unique (1-9)!";
+            msg.style.color = "#d9534f";
+        }
+    }
+
+    initGame();
+</script>
+</body>
+</html>
