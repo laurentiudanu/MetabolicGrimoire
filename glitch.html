@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Glitch Text With Random Bursts</title>
+<style>
+    body {
+        background: #000;
+        color: #fff;
+        font-family: Arial, sans-serif;
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        overflow: hidden;
+    }
+
+    .glitch-container {
+        position: relative;
+        font-size: 3rem;
+        font-weight: bold;
+        text-transform: uppercase;
+        animation: bgFlicker 0.15s infinite;
+        padding: 20px;
+    }
+
+    .glitch {
+        position: relative;
+        display: inline-block;
+    }
+
+    /* Ghost layers */
+    .glitch::before,
+    .glitch::after {
+        content: attr(data-text);
+        position: absolute;
+        top: 0;
+        left: 0;
+        opacity: 0.7;
+        clip-path: inset(0 0 0 0);
+        transition: transform 0.05s;
+    }
+
+    .glitch::before {
+        color: red;
+        transform: translate(-2px, -2px);
+        animation: glitchShift 0.2s infinite;
+    }
+
+    .glitch::after {
+        color: cyan;
+        transform: translate(2px, 2px);
+        animation: glitchShift2 0.25s infinite;
+    }
+
+    /* Distortion keyframes */
+    @keyframes glitchShift {
+        0% { transform: translate(-2px, -2px); }
+        50% { transform: translate(-4px, 2px); }
+        100% { transform: translate(-2px, -2px); }
+    }
+
+    @keyframes glitchShift2 {
+        0% { transform: translate(2px, 2px); }
+        50% { transform: translate(4px, -2px); }
+        100% { transform: translate(2px, 2px); }
+    }
+
+    /* Background flicker */
+    @keyframes bgFlicker {
+        0% { background: rgba(0,0,0,0.9); }
+        50% { background: rgba(0,0,0,0.7); }
+        100% { background: rgba(0,0,0,0.9); }
+    }
+
+    /* Glitch burst class */
+    .burst {
+        animation: burstAnim 0.1s steps(2) 3;
+    }
+
+    @keyframes burstAnim {
+        0% { transform: translate(0,0) skew(0deg); }
+        50% { transform: translate(10px,-5px) skew(20deg); }
+        100% { transform: translate(-10px,5px) skew(-20deg); }
+    }
+</style>
+</head>
+<body>
+
+<div class="glitch-container">
+    <div class="glitch" data-text="SYSTEM CORRUPTED">SYSTEM CORRUPTED</div>
+</div>
+
+<script>
+/* Auto-apply glitch class to all text divs */
+document.querySelectorAll("div").forEach(div => {
+    if (div.innerText.trim().length > 0 && !div.classList.contains("glitch")) {
+        const text = div.innerText;
+        div.classList.add("glitch");
+        div.setAttribute("data-text", text);
+    }
+});
+
+/* RANDOM GLITCH BURSTS */
+function triggerRandomBurst() {
+    const glitchElements = document.querySelectorAll(".glitch");
+
+    glitchElements.forEach(el => {
+        if (Math.random() < 0.2) { // 20% chance each cycle
+            el.classList.add("burst");
+
+            // Remove burst after animation ends
+            setTimeout(() => {
+                el.classList.remove("burst");
+            }, 300);
+        }
+    });
+}
+
+// Trigger bursts every 300–700ms randomly
+setInterval(triggerRandomBurst, Math.random() * 200 + 300);
+</script>
+
+</body>
+</html>
