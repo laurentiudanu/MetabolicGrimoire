@@ -55,7 +55,7 @@
   }
   #messageBox {
     position: absolute;
-    max-width: 60%;
+    max-width: 484px;
     left: 50%;
     top: 20%;
     transform: translateX(-50%);
@@ -96,6 +96,15 @@
   #messageBox button:hover {
     background: #ffeb7a;
   }
+  #messageBox em {
+    font-style: normal;
+    display: block;
+    padding-top: 24px;
+    color: #d47f11;
+    text-transform: uppercase;
+    font-weight: 600;
+    font-size: 12px;
+  }
   #levelLabel {
     position: absolute;
     left: 16px;
@@ -106,6 +115,17 @@
     pointer-events: none;
   }
   #architect-message, #intro-message {display: none; visibility: hidden; pointer-events: none; user-select: none;}
+  @keyframes sPulse {
+    0% {color: #905a15;}
+    50% {color: #d47f11;}
+    100% {color: #905a15;}
+  }
+  #messageLongText p em {
+    animation-name: sPulse;
+    animation-duration: 1800ms;
+    animation-iteration-count: infinite;
+    animation-timing-function: linear;
+  }
 </style>
 </head>
 <body>
@@ -115,6 +135,7 @@
   <div id="messageBox">
     <h2 id="messageTitle"></h2>
     <p id="messageText"></p>
+    <div id="messageLongText"></div>
     <button id="messageClose">&times;</button>
   </div>
 </div>
@@ -127,7 +148,7 @@
   <p>To be responsible is to realize you are the one who locked the door...</p>
 </div>
 <div id="intro-message">
-  <p>Observe the geometry of your isolation. </p>
+  <p>Observe the geometry of your isolation.</p>
   <p>The flesh isn't a boundary, a closed-loop system of synaptic lag and hormonal static, but it is actually a sieve. And the soul is poured, slowly, into the vacuum of the mundane until you are nothing but a dry husk of "maybe" and "almost" that can only transcend through agony and dissolution.</p>
   <p>You feel the shifting of the walls, don’t you? </p>
   <p>The configuration is almost complete and you are no longer a person. You are a probability. A frequency.</p>
@@ -138,7 +159,6 @@
 // stian
 window.addEventListener("keyup", e => {
   if (["Enter","Escape"].includes(e.key)) {
-    window.alert("hide message if visible");
     if(document.querySelector("#messageBox").style.display == "block"){
       const clsbutton = document.getElementById("messageClose");
       const clkevent = new MouseEvent("click", {
@@ -159,6 +179,7 @@ const ctx = canvas.getContext("2d");
 const messageBox = document.getElementById("messageBox");
 const messageTitle = document.getElementById("messageTitle");
 const messageText = document.getElementById("messageText");
+const messageLongText = document.getElementById("messageLongText");
 const messageClose = document.getElementById("messageClose");
 const levelLabel = document.getElementById("levelLabel");
 
@@ -1035,6 +1056,7 @@ function loop(timestamp) {
 //})();
 }
 function gintro() {
+  messageLongText.innerHTML = "<p><strong>Observe the geometry of your isolation.</strong></p><p>The flesh isn't a boundary, a closed-loop system of synaptic lag and hormonal static, but it is actually a sieve. And the soul is poured, slowly, into the vacuum of the mundane until you are nothing but a dry husk of maybe and almost that can only transcend through agony and dissolution.</p><p>You feel the shifting of the walls, don’t you? </p><p>The configuration is almost complete and you are no longer a person. You are a probability. A frequency.</p><p>Free yourself from your mortal coil because for the first time you have the keys and AZEM is waiting.</p><p><em>Press Enter to begin the descent...</em></p>";
   messageBox.style.display = "block";
   messageOpen = true;
   messageClose.onclick = () => {
