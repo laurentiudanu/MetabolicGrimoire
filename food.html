@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Food Macro & Micro Lookup</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #111;
+        color: #eee;
+        padding: 20px;
+    }
+    input {
+        width: 300px;
+        padding: 10px;
+        font-size: 16px;
+    }
+    button {
+        padding: 10px 20px;
+        font-size: 16px;
+        margin-left: 10px;
+        cursor: pointer;
+    }
+    #result {
+        margin-top: 30px;
+        padding: 20px;
+        background: #222;
+        border-radius: 8px;
+    }
+    .section-title {
+        margin-top: 20px;
+        font-size: 20px;
+        color: #7dd;
+    }
+    img {
+        max-width: 200px;
+        margin-top: 10px;
+        border-radius: 6px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
+    td {
+        padding: 6px;
+        border-bottom: 1px solid #444;
+    }
+</style>
+</head>
+<body>
+
+<h1>Food Macro & Micro Lookup</h1>
+
+<input id="searchInput" placeholder="Search for a food (e.g., banana)" />
+<button onclick="searchFood()">Search</button>
+
+<div id="result"></div>
+
+<script>
+async function searchFood() {
+    const query = document.getElementById("searchInput").value.trim();
+    if (!query) return;
+
+    const resultDiv = document.getElementById("result");
+    resultDiv.innerHTML = "Searching...";
+
+    // Search endpoint
+    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (!data.products || data.products.length === 0) {
+        resultDiv.innerHTML = "No results found.";
+        return;
+    }
+
+    // Pick the best match (first result)
+    const product = data.products[0];
+    const nutr = product.nutriments || {};
+
+    // Build macro table
+    const macros = [
+        ["Energy (kcal)", nutr["energy-kcal_100g"]],
+        ["Protein (g)", nutr["proteins_100g"]],
+        ["Carbs (g)", nutr["carbohydrates_100g"]],
+        ["Sugars (g)", nutr["sugars_100g"]],
+        ["Fat (g)", nutr["fat_100g"]],
+        ["Saturated Fat (g)", nutr["saturated-fat_100g"]],
+        ["Fiber (g)", nutr["fiber_100g"]],
+        ["Salt (g)", nutr["salt_100g"]],
+    ];
+
+    // Extract micros dynamically (vitamins, minerals, trace nutrients)
+    const micros = Object.entries(nutr)
+        .filter(([key, val]) =>
+            key.includes("_100g") &&
+            !key.includes("energy") &&
+            !key.includes("carbo") &&
+            !key.includes("fat") &&
+            !key.includes("protein") &&
+            !key.includes("fiber") &&
+            !key.includes("sugar") &&
+            !key.includes("salt")
+        )
+        .map(([key, val]) => [
+            key.replace("_100g", "").replace(/-/g, " "),
+            val
+        ]);
+
+    // Render output
+    resultDiv.innerHTML = `
+        <h2>${product.product_name || "Unnamed Product"}</h2>
+        ${product.image_front_url ? `<img src="${product.image_front_url}" />` : ""}
+
+        <div class="section-title">Ingredients</div>
+        <div>${product.ingredients_text || "No ingredient list available."}</div>
+
+        <div class="section-title">Macros (per 100g)</div>
+        <table>
+            ${macros
+                .map(([label, val]) => `<tr><td>${label}</td><td>${val ?? "-"}</td></tr>`)
+                .join("")}
+        </table>
+
+        <div class="section-title">Micros (per 100g)</div>
+        <table>
+            ${
+                micros.length
+                    ? micros
+                        .map(([label, val]) => `<tr><td>${label}</td><td>${val}</td></tr>`)
+                        .join("")
+                    : "<tr><td>No micronutrient data available.</td></tr>"
+            }
+        </table>
+
+        <div class="section-title">Other Info</div>
+        <table>
+            <tr><td>NOVA Score</td><td>${product.nova_group ?? "-"}</td></tr>
+            <tr><td>Brand</td><td>${product.brands || "-"}</td></tr>
+            <tr><td>Barcode</td><td>${product.code}</td></tr>
+        </table>
+    `;
+}
+</script>
+
+</body>
+</html>

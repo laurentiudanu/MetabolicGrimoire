@@ -173,6 +173,7 @@ window.addEventListener("keyup", e => {
 
 //(() => {
 function azem(){
+
 /* ============ CANVAS ============ */
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -246,6 +247,7 @@ function scheduleNextFlicker() {
   if (flickersTriggered >= 8) return;
   nextFlickerTime = performance.now() + (2000 + Math.random() * 8000);
 }
+
 
 function triggerFlicker() {
   if (flickerActive || flickersTriggered >= 8) return;
@@ -441,6 +443,19 @@ function showMessage(title, text, onClose) {
   };
 }
 
+const voiditems = ["apple", "banana", "cherry", "date", "elderberry"];
+
+function voidMessages() {
+  // pick a random entry
+  let vchoice = voiditems[Math.floor(Math.random() * voiditems.length)];
+  window.alert("Picked:", vchoice);
+
+  // schedule next run with a random delay
+  const delay = Math.floor(Math.random() * (24000 - 1400 + 1)) + 1400;
+  setTimeout(voidMessages, delay);
+}
+
+
 /* ============ MAZE GEN ============ */
 function generateMaze() {
   const base = 12;
@@ -626,6 +641,7 @@ function setupLevel() {
   //levelLabel.textContent = "Room " +generateSecureRandomLetters()+""+ generateRandomFormattedNumber();
   levelLabel.textContent = "Room " +generateSecureRandomLetters(length=1)+"-"+ generateTesseractCoordinate(5);
   startFadeIn();
+  voidMessages();
 }
 
 /* ============ FADE ============ */
