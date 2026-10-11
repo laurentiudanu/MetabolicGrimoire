@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Page Audit: SEO, GEO, Accessibility, Schema</title>
+<style>
+:root{--bg:#f3f5f2;--c:#fff;--t:#1c2420;--m:#5d6b64;--b:#d9dfda;--p:#0f6b52;--ok:#16794a;--w:#a15c07;--f:#b42318}
+@media(prefers-color-scheme:dark){:root{--bg:#101512;--c:#171e1a;--t:#e6ece8;--m:#9aa8a0;--b:#2a352f;--p:#4fd1a1;--ok:#5ee09a;--w:#f2b24a;--f:#ff8a7a}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.55 Georgia,'Times New Roman',serif;background:var(--bg);color:var(--t)}
+main{max-width:980px;margin:auto;padding:24px 16px 60px}h1{font-size:30px;margin:0 0 4px;letter-spacing:-.02em}h2{font-size:20px;margin:0 0 10px}
+.sub{color:var(--m);margin:0 0 20px}input,select,textarea,button{font:inherit;color:inherit;background:var(--c);border:1px solid var(--b);border-radius:6px;padding:9px 11px;width:100%}
+textarea{min-height:80px;font:13px monospace}button{background:var(--p);color:#fff;border:0;cursor:pointer;font-weight:700;width:auto;padding:10px 22px}
+@media(prefers-color-scheme:dark){button{color:#08140f}}button:disabled{opacity:.5}:focus-visible{outline:3px solid var(--p);outline-offset:2px}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}.row>*{flex:1 1 220px}.row>button{flex:0 0 auto}
+details{background:var(--c);border:1px solid var(--b);border-radius:6px;padding:10px 14px;margin-bottom:10px}summary{cursor:pointer;font-weight:700}
+details label{display:block;margin:10px 0 3px;color:var(--m);font-size:13px}
+.card{background:var(--c);border:1px solid var(--b);border-radius:6px;padding:16px;margin-top:16px;overflow-x:auto}
+.sc{float:right;font-size:22px;font-weight:700}.ok{color:var(--ok)}.w{color:var(--w)}.f{color:var(--f)}
+ul{list-style:none;margin:0;padding:0}li{display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--b)}li b{flex:0 0 22px;text-align:center}li span{color:var(--m);font-size:14px}
+li.pass b{color:var(--ok)}li.warn b{color:var(--w)}li.fail b{color:var(--f)}li.info b{color:var(--m)}
+.scores{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:16px}.scores div{background:var(--c);border:1px solid var(--b);border-radius:6px;padding:12px}
+.scores strong{display:block;font-size:34px;line-height:1}table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-top:1px solid var(--b);padding:6px 8px;text-align:left}td:not(:first-child){font-variant-numeric:tabular-nums}
+.best{font-weight:700;color:var(--ok)}#st{color:var(--m);margin-left:8px}.tag{color:var(--m);font-size:12px}
+</style></head><body><main>
+<h1>Page audit</h1>
+<p class="sub">SEO, GEO (AI-search readiness), accessibility and JSON-LD validation for any URL, plus a comparison with the top 3 Google results.</p>
+<div class="row"><input id="url" type="text" placeholder="https://example.com/page" aria-label="URL to analyze">
+<input id="kw" type="text" placeholder="Target keyword (auto-detected if empty)" aria-label="Target keyword"></div>
+<details><summary>Fetching &amp; competitor settings</summary>
+<label for="proxy">Custom CORS proxy (use {url} as placeholder). Empty = try direct, then public proxies</label><input id="proxy" placeholder="https://my-proxy.example/?u={url}">
+<label for="sp">Competitor source (Google results)</label>
+<select id="sp"><option value="manual">Manual: I enter competitor URLs</option><option value="serper">Serper.dev API (Google results)</option><option value="cse">Google Programmable Search API</option><option value="none">Skip comparison</option></select>
+<label for="sk">API key (Serper or Google)</label><input id="sk" type="password" autocomplete="off">
+<label for="cx">Search engine ID (Google Programmable Search only)</label><input id="cx">
+<label for="man">Competitor URLs (manual mode, one per line, max 3)</label><textarea id="man"></textarea></details>
+<details><summary>Fallbacks: paste HTML or JSON-LD</summary>
+<label for="html">Page HTML (used instead of fetching the URL, for sites that block proxies)</label><textarea id="html"></textarea>
+<label for="ld">JSON-LD to validate (leave URL empty to validate only this)</label><textarea id="ld" placeholder='{"@context":"https://schema.org","@type":"Organization","name":"Acme"}'></textarea></details>
+<button id="go">Analyze</button><span id="st" role="status"></span>
+<div id="out"></div>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const txt=e=>(e?.textContent||'').replace(/\s+/g,' ').trim(),add=(a,s,t,d='')=>{a.push({s,t,d})};
+const PX=[u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,u=>`https://corsproxy.io/?url=${encodeURIComponent(u)}`,u=>`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`];
+async function tf(u){const c=new AbortController(),t=setTimeout(()=>c.abort(),15000);try{const r=await fetch(u,{signal:c.signal});if(!r.ok)throw Error('HTTP '+r.status);return await r.text()}finally{clearTimeout(t)}}
+async function getText(url){const cp=$('#proxy').value.trim(),tr=[u=>u,...(cp?[u=>cp.replace('{url}',encodeURIComponent(u))]:PX)];let err;
+ for(const p of tr){try{const t=await tf(p(url));if(t&&t.length>20)return t}catch(e){err=e}}throw Error('Could not fetch '+url+' ('+(err?.message||'blocked')+'). Try a custom proxy or paste the HTML in Fallbacks.')}
+const STOP=new Set('the and for with that this from your you are was were not but can will has have our all about more what when how why who into than then them they their its out use new one'.split(' '));
+function topKw(title,desc,hs,body){const sc={},ad=(s,w)=>{const t=s.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu)||[];t.forEach((x,i)=>{if(STOP.has(x))return;sc[x]=(sc[x]||0)+w;const y=t[i+1];if(y&&!STOP.has(y))sc[x+' '+y]=(sc[x+' '+y]||0)+w*2.5})};
+ ad(title,5);ad(desc,3);hs.forEach(h=>ad(txt(h),h.tagName=='H1'?4:2));ad(body.slice(0,6000),.5);return Object.entries(sc).sort((a,b)=>b[1]-a[1])[0]?.[0]||''}
+const SCH={Organization:[['name'],['url','logo','sameAs']],WebSite:[['name','url'],['potentialAction']],Article:[['headline','image','datePublished','author'],['dateModified','publisher','description']],Product:[['name','image','offers'],['description','sku','brand','aggregateRating','review']],FAQPage:[['mainEntity'],[]],Question:[['name','acceptedAnswer'],[]],Answer:[['text'],[]],BreadcrumbList:[['itemListElement'],[]],ListItem:[['position'],['name','item']],LocalBusiness:[['name','address'],['telephone','openingHours','geo','image','url']],Person:[['name'],['url','sameAs','jobTitle']],Event:[['name','startDate','location'],['endDate','image','offers','description']],VideoObject:[['name','thumbnailUrl','uploadDate','description'],['contentUrl','embedUrl','duration']],Recipe:[['name','image'],['recipeIngredient','recipeInstructions','author']],Offer:[['price','priceCurrency'],['availability','url']],HowTo:[['name','step'],['image','totalTime']],WebPage:[[],['name','description']]};
+const AL={NewsArticle:'Article',BlogPosting:'Article',TechArticle:'Article',Corporation:'Organization',OnlineStore:'Organization',Restaurant:'LocalBusiness',Store:'LocalBusiness',ProfessionalService:'LocalBusiness',MedicalBusiness:'LocalBusiness'};
+function validate(blocks){const out=[],types=new Set(),N=[];
+ blocks.forEach((raw,i)=>{let j;try{j=JSON.parse(raw)}catch(e){return add(out,'fail',`JSON-LD block #${i+1}: invalid JSON`,e.message+'. Check trailing commas, quotes and escaping.')}
+  const c0=Array.isArray(j)?j[0]:j;if(!/schema\.org/.test(JSON.stringify(c0?.['@context']||'')))add(out,'fail',`Block #${i+1}: missing or invalid @context`,'Add "@context": "https://schema.org".');
+  const walk=n=>{if(Array.isArray(n))return n.forEach(walk);if(n&&typeof n=='object'){if(n['@type'])N.push(n);for(const k in n)if(k[0]!='@'||k=='@graph')walk(n[k])}};walk(j)});
+ const seen=new Set(),emp=p=>p==null||p===''||(Array.isArray(p)&&!p.length);
+ N.forEach(n=>[].concat(n['@type']).forEach(t=>{types.add(t);const k=SCH[t]?t:AL[t];
+  if(!k)return add(out,'info',`${t}: no built-in rules`,'Verify with validator.schema.org or the Google Rich Results Test.');
+  const [rq,rc]=SCH[k],ms=rq.filter(p=>emp(n[p])),rec=rc.filter(p=>emp(n[p])),key=t+ms+rec;if(seen.has(key))return;seen.add(key);
+  if(ms.length)add(out,'fail',`${t}: missing required ${ms.join(', ')}`,'Required for rich result eligibility.');
+  else if(rec.length)add(out,'warn',`${t}: valid, missing recommended ${rec.join(', ')}`,'These properties improve rich results and entity clarity.');
+  else add(out,'pass',`${t}: required and recommended properties present`);
+  ['datePublished','dateModified','startDate','endDate','uploadDate'].forEach(p=>{if(typeof n[p]=='string'&&!/^\d{4}-\d{2}-\d{2}/.test(n[p]))add(out,'warn',`${t}.${p} is not ISO 8601`,`"${n[p]}": use YYYY-MM-DD or a full ISO datetime.`)});
+  ['url','image','logo'].forEach(p=>{if(typeof n[p]=='string'&&!/^https?:\/\//.test(n[p]))add(out,'warn',`${t}.${p} is not an absolute URL`,`"${n[p]}"`)})}));
+ if(!blocks.length)add(out,'warn','No JSON-LD structured data found','Add JSON-LD (Organization, WebSite, Article or Product, BreadcrumbList, FAQPage) so search and AI engines can identify entities.');
+ else if(!N.length&&!out.length)add(out,'warn','JSON-LD has no typed entities','Add an @type to each entity.');
+ return{out,types:[...types],N}}
+function aiBlocked(r){const bots=['GPTBot','ClaudeBot','PerplexityBot','Google-Extended','CCBot','OAI-SearchBot'],rl={};let ua=[],last=0;
+ r.split(/\r?\n/).forEach(l=>{const m=l.replace(/#.*/,'').trim().match(/^(user-agent|disallow)\s*:\s*(.*)$/i);if(!m)return;
+  if(m[1].toLowerCase()=='user-agent'){if(!last)ua=[];ua.push(m[2].trim().toLowerCase());last=1}else{last=0;if(m[2].trim()=='/')ua.forEach(x=>rl[x]=1)}});
+ return bots.filter(b=>rl[b.toLowerCase()]||rl['*'])}
+async function analyze(url,html,o={}){
+ const doc=new DOMParser().parseFromString(html,'text/html'),u=new URL(url),q=s=>doc.querySelector(s),qa=s=>[...doc.querySelectorAll(s)];
+ const R={url,seo:[],geo:[],a11y:[],schema:[]},S=R.seo,G=R.geo,A=R.a11y;
+ const cl=doc.body.cloneNode(true);cl.querySelectorAll('script,style,noscript,template,svg').forEach(e=>e.remove());
+ const body=txt(cl),words=body?body.split(' '):[],wc=words.length,title=txt(q('title')),desc=(q('meta[name=description]')?.content||'').trim();
+ const hs=qa('h1,h2,h3,h4,h5,h6'),h1=hs.filter(h=>h.tagName=='H1'),h2=hs.filter(h=>h.tagName=='H2'),lv=hs.map(h=>+h.tagName[1]);
+ const kw=(o.kw||topKw(title,desc,hs,body)).toLowerCase(),imgs=qa('img');
+ const lk=qa('a[href]').map(a=>{try{return new URL(a.getAttribute('href'),url)}catch{return null}}).filter(x=>x&&/^https?:/.test(x.protocol)),int=lk.filter(l=>l.hostname==u.hostname).length,ext=lk.length-int;
+ let robots=null,llms=null;if(o.aux){const g=async p=>{try{const t=await getText(u.origin+p);return /<html|<!doctype/i.test(t.slice(0,300))?null:t}catch{return null}};[robots,llms]=await Promise.all([g('/robots.txt'),g('/llms.txt')])}
+ const v=validate(qa('script[type="application/ld+json"]').map(s=>s.textContent.trim())),N=v.N,hasT=re=>N.some(n=>re.test([].concat(n['@type']).join()));
+ // SEO
+ const tl=title.length;add(S,!tl?'fail':tl<30||tl>60?'warn':'pass',`Title tag (${tl} chars)`,tl?'Aim for 30–60 characters, main keyword first.':'Add a unique, descriptive <title>.');
+ const dl=desc.length;add(S,!dl?'fail':dl<70||dl>160?'warn':'pass',`Meta description (${dl} chars)`,dl?'Aim for 70–160 characters with a clear benefit and the keyword.':'Add a meta description to control the search snippet.');
+ add(S,h1.length==1?'pass':h1.length?'warn':'fail',`H1 headings: ${h1.length}`,h1.length==1?'':'Use exactly one H1 that states the page topic.');
+ add(S,lv.some((l,i)=>i&&l>lv[i-1]+1)?'warn':'pass','Heading hierarchy','Do not skip levels (H2 to H4); it hurts scanning and screen readers.');
+ add(S,q('link[rel=canonical]')?'pass':'warn','Canonical URL','Add <link rel="canonical"> to avoid duplicate-content dilution.');
+ add(S,/noindex/i.test(q('meta[name=robots]')?.content||'')?'fail':'pass','Indexability (meta robots)','Remove "noindex" if the page should rank.');
+ add(S,u.protocol=='https:'?'pass':'fail','HTTPS','Serve the site over HTTPS.');
+ add(S,q('meta[name=viewport]')?'pass':'fail','Mobile viewport meta','Add <meta name="viewport" content="width=device-width, initial-scale=1">.');
+ const og=['og:title','og:description','og:image'].filter(p=>!q(`meta[property="${p}"]`));add(S,og.length?'warn':'pass','Open Graph tags',og.length?'Missing: '+og.join(', '):'');
+ add(S,q('meta[name="twitter:card"]')?'pass':'warn','Twitter/X card','Add twitter:card for richer shares.');
+ add(S,wc>=600?'pass':wc>=300?'warn':'fail',`Content length: ${wc} words`,'Pages that rank usually cover the topic in depth (600+ words), unless intent is purely transactional.');
+ const na=imgs.filter(i=>!i.hasAttribute('alt')).length;add(S,na?'warn':'pass',`Images with alt: ${imgs.length-na}/${imgs.length}`,'Describe images in alt text; it helps image search too.');
+ add(S,int>=3?'pass':'warn',`Links: ${int} internal, ${ext} external`,'Link to related internal pages with descriptive anchors.');
+ add(S,u.pathname.length>75||/[A-Z_]|\?.*&.*&/.test(u.pathname+u.search)?'warn':'pass','URL structure','Prefer short, lowercase, hyphenated, readable URLs.');
+ if(kw){const lc=body.toLowerCase(),n=lc.split(kw).length-1,den=wc?n*kw.split(' ').length/wc*100:0;
+  add(S,title.toLowerCase().includes(kw)?'pass':'warn',`Keyword "${kw}" in title`,'Place the primary keyword near the start of the title.');
+  add(S,h1.some(h=>txt(h).toLowerCase().includes(kw))?'pass':'warn','Keyword in H1');
+  add(S,desc.toLowerCase().includes(kw)?'pass':'warn','Keyword in meta description');
+  add(S,words.slice(0,100).join(' ').toLowerCase().includes(kw)?'pass':'warn','Keyword in first 100 words');
+  add(S,den>=.3&&den<=3?'pass':'warn',`Keyword density ${den.toFixed(2)}%`,'Target roughly 0.5–2%; avoid stuffing.')}
+ if(o.aux)add(S,robots==null?'info':/^\s*sitemap:/im.test(robots)?'pass':'warn',robots==null?'robots.txt not reachable':'Sitemap declared in robots.txt',robots==null?'Could not read /robots.txt (proxy or missing file).':'Add a Sitemap: line to robots.txt.');
+ // GEO
+ if(o.aux){if(robots==null)add(G,'info','AI crawler access: robots.txt unavailable');else{const b=aiBlocked(robots);add(G,b.length?'fail':'pass',b.length?'AI crawlers blocked: '+b.join(', '):'AI crawlers allowed (GPTBot, ClaudeBot, PerplexityBot, Google-Extended)','If you want to be cited by AI answers, do not disallow these user agents.')}
+  add(G,llms?'pass':'info',llms?'llms.txt present':'No llms.txt','Optional emerging convention: /llms.txt summarizes key pages for LLMs.')}
+ add(G,N.length?'pass':'fail','Structured data for entity understanding','Add JSON-LD; LLM-based engines lean on explicit entities.');
+ add(G,N.some(n=>/Organization|Person|LocalBusiness|Corporation/.test([].concat(n['@type']).join())&&n.sameAs)?'pass':'warn','Entity links (sameAs)','Add Organization/Person with sameAs links (LinkedIn, Wikipedia, Wikidata) to strengthen brand identity.');
+ add(G,N.some(n=>n.author)||q('meta[name=author],[rel=author],[itemprop=author],.author,.byline')?'pass':'warn','Author / byline (E-E-A-T)','Show named authors with credentials and link to an author page.');
+ add(G,N.some(n=>n.datePublished||n.dateModified)||q('time[datetime],meta[property="article:modified_time"]')?'pass':'warn','Freshness signals','Expose published and updated dates; AI engines favor current sources.');
+ const qh=hs.filter(h=>/\?\s*$/.test(txt(h))).length;add(G,qh>=2||hasT(/FAQPage|HowTo/)?'pass':'warn',`Question-style headings: ${qh}`,'Phrase H2/H3 as the questions users ask, followed by a direct answer; add FAQPage schema where genuine.');
+ const p1=qa('p').map(txt).find(t=>t.split(' ').length>=8),pw=p1?p1.split(' ').length:0;add(G,pw>=15&&pw<=80?'pass':'warn',`Answer-first intro (${pw} words)`,'Open with a concise 40–60 word answer that can be quoted verbatim.');
+ const st=qa('ul,ol,table').length;add(G,st>=2?'pass':'warn',`Extractable structure (lists/tables): ${st}`,'Lists, tables and short sections are easy for LLMs to quote.');
+ const nums=(body.match(/\b\d[\d.,]*%?/g)||[]).length;add(G,nums>=5&&ext>=2?'pass':'warn',`Evidence: ${nums} figures, ${ext} external links`,'Cite statistics and authoritative sources; it raises citation likelihood.');
+ add(G,q('main,article')&&q('section,article,nav')?'pass':'warn','Semantic HTML (main/article/section)','Semantic landmarks help parsers separate content from chrome.');
+ const sn=body.split(/[.!?]+\s/).filter(s=>s.length>3).length,asl=sn?wc/sn:0;add(G,asl&&asl<=22?'pass':'warn',`Avg sentence length: ${asl.toFixed(1)} words`,'Keep sentences under ~20 words for clear, quotable statements.');
+ // A11y
+ add(A,doc.documentElement.getAttribute('lang')?'pass':'fail','Page language (html lang)','Add lang="en" (or the right code) to <html>.');
+ add(A,tl?'pass':'fail','Page has a title');
+ add(A,na?'fail':'pass',`Images missing alt: ${na}`,'Add alt text; use alt="" for decorative images.');
+ const inp=qa('input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=image]):not([type=reset]),select,textarea').filter(i=>!(i.getAttribute('aria-label')||i.getAttribute('aria-labelledby')||i.title||i.closest('label')||(i.id&&doc.querySelector(`label[for="${CSS.escape(i.id)}"]`))));
+ add(A,inp.length?'fail':'pass',`Form fields without labels: ${inp.length}`,'Associate every field with a <label for> or aria-label.');
+ const nm=e=>txt(e)||e.getAttribute('aria-label')||e.getAttribute('aria-labelledby')||e.title||e.querySelector('img[alt]:not([alt=""]),svg[aria-label],svg title');
+ const bt=qa('button,[role=button]').filter(b=>!nm(b)),ln=qa('a[href]').filter(a=>!nm(a));
+ add(A,bt.length?'fail':'pass',`Buttons without accessible name: ${bt.length}`,'Add visible text or aria-label (icon-only buttons).');
+ add(A,ln.length?'fail':'pass',`Links without accessible name: ${ln.length}`,'Give every link text or aria-label.');
+ const gl=qa('a[href]').filter(a=>/^(click here|here|read more|more|learn more|link)$/i.test(txt(a))).length;add(A,gl?'warn':'pass',`Generic link text: ${gl}`,'Use descriptive anchors; "read more" is ambiguous out of context.');
+ add(A,q('main,[role=main]')?'pass':'warn','Main landmark','Wrap primary content in <main>.');
+ add(A,q('nav,[role=navigation]')?'pass':'warn','Navigation landmark');
+ add(A,h1.length?'pass':'fail','H1 present for screen-reader orientation');
+ add(A,qa('a[href^="#"]').slice(0,6).some(a=>/skip|main|content/i.test(txt(a)+a.getAttribute('href')))?'pass':'warn','Skip-to-content link','Add a first-focusable "Skip to main content" link.');
+ add(A,/user-scalable\s*=\s*(no|0)|maximum-scale\s*=\s*1(\.0)?\b/i.test(q('meta[name=viewport]')?.content||'')?'fail':'pass','Zoom not disabled','Remove user-scalable=no / maximum-scale=1.');
+ const ids=qa('[id]').map(e=>e.id),dup=new Set(ids.filter((x,i)=>ids.indexOf(x)!=i)).size;add(A,dup?'fail':'pass',`Duplicate IDs: ${dup}`,'IDs must be unique for labels and ARIA references.');
+ const tp=qa('[tabindex]').filter(e=>+e.getAttribute('tabindex')>0).length;add(A,tp?'warn':'pass',`Positive tabindex: ${tp}`,'Avoid tabindex>0; it breaks natural focus order.');
+ const fr=qa('iframe').filter(f=>!f.title&&!f.getAttribute('aria-label')).length;add(A,fr?'warn':'pass',`Iframes without title: ${fr}`);
+ const tb=qa('table').filter(t=>!t.querySelector('th')).length;add(A,tb?'warn':'pass',`Tables without header cells: ${tb}`,'Use <th scope> for data tables.');
+ add(A,'info','Not checked statically','Color contrast, keyboard operation and focus visibility need a browser tool (axe, Lighthouse) or manual testing.');
+ R.schema=v.out;R.m={seo:sc(S),geo:sc(G),a11y:sc(A),sch:sc(v.out),tl,wc,h2:h2.length,img:imgs.length,int,ext,types:v.types.length,kw,tn:v.types.join(', ')};return R}
+function sc(a){const x=a.filter(c=>c.s!='info');return x.length?Math.round(100*(x.filter(c=>c.s=='pass').length+.5*x.filter(c=>c.s=='warn').length)/x.length):0}
+const col=n=>n>=80?'ok':n>=50?'w':'f',IC={pass:'✓',warn:'!',fail:'✕',info:'i'},OR={fail:0,warn:1,info:2,pass:3};
+const card=(n,a,s)=>`<section class="card"><h2>${n}${s!=null?`<span class="sc ${col(s)}">${s}/100</span>`:''}</h2><ul>${[...a].sort((x,y)=>OR[x.s]-OR[y.s]).map(c=>`<li class="${c.s}"><b aria-label="${c.s}">${IC[c.s]}</b><div><strong>${esc(c.t)}</strong>${c.d?`<br><span>${esc(c.d)}</span>`:''}</div></li>`).join('')}</ul></section>`;
+function view(R){const m=R.m,L=[['SEO',R.seo,m.seo],['GEO (AI search)',R.geo,m.geo],['Accessibility',R.a11y,m.a11y],['Schema (JSON-LD)',R.schema,m.sch]];
+ const top=[['SEO',R.seo],['GEO',R.geo],['A11y',R.a11y],['Schema',R.schema]].flatMap(([n,a])=>a.filter(c=>c.s=='fail'||c.s=='warn').map(c=>({...c,t:`${n}: ${c.t}`}))).sort((a,b)=>OR[a.s]-OR[b.s]).slice(0,10);
+ return `<div class="scores">${L.map(([n,,s])=>`<div><span>${n}</span><strong class="${col(s)}">${s}</strong></div>`).join('')}</div>
+ <p class="sub" style="margin-top:12px">Analyzed keyword: <strong>${esc(m.kw||'n/a')}</strong>${m.tn?` · Schema types: ${esc(m.tn)}`:''}</p>${card('Top improvements',top.length?top:[{s:'pass',t:'No failing checks',d:''}])}${L.map(([n,a,s])=>card(n,a,s)).join('')}`}
+function cmp(R,C){const ok=C.filter(c=>c.m),bad=C.filter(c=>!c.m);if(!ok.length)return `<section class="card"><h2>Competitor comparison</h2><p>${C.length?'No competitor page could be fetched.':'Add competitor URLs, or an API key, in settings to enable the comparison.'}</p>${bad.map(c=>`<p class="f">${esc(c.url)}: ${esc(c.err)}</p>`).join('')}</section>`;
+ const rows=[['SEO score','seo'],['GEO score','geo'],['Accessibility score','a11y'],['Schema score','sch'],['Title length','tl',1],['Words','wc'],['H2 sections','h2'],['Images','img'],['Internal links','int'],['External links','ext'],['Schema types','types']],all=[R,...ok];
+ const host=u=>new URL(u).hostname.replace(/^www\./,'');
+ const tr=rows.map(([n,k,x])=>{const b=Math.max(...all.map(r=>r.m[k]));return `<tr><td>${n}</td>${all.map(r=>`<td class="${!x&&r.m[k]==b&&b>0?'best':''}">${r.m[k]}</td>`).join('')}</tr>`}).join('');
+ const adv={seo:'SEO score',geo:'GEO score',a11y:'accessibility score',wc:'content length (words)',h2:'H2 sections',types:'schema types',ext:'external citations'};
+ const tips=Object.entries(adv).map(([k,n])=>{const avg=ok.reduce((s,c)=>s+c.m[k],0)/ok.length,me=R.m[k],sc=['seo','geo','a11y'].includes(k);
+  return avg>me*1.15&&avg-me>=(sc?5:1)?`Behind: competitors average ${Math.round(avg)} for ${n} vs your ${me}.`:avg<me*.85&&me-avg>=(sc?5:1)?`Ahead: your ${n} is ${me} vs a competitor average of ${Math.round(avg)}.`:''}).filter(Boolean);
+ return `<section class="card"><h2>Top Google competitors for “${esc(R.m.kw)}”</h2><table><tr><th>Metric</th><th>You<br><span class="tag">${esc(host(R.url))}</span></th>${ok.map((c,i)=>`<th>#${i+1}<br><span class="tag"><a href="${esc(c.url)}" target="_blank" rel="noopener" style="color:inherit">${esc(host(c.url))}</a></span></th>`).join('')}</tr>${tr}</table>
+ <ul style="margin-top:12px">${(tips.length?tips:['You are broadly on par with these competitors.']).map(t=>`<li class="${t[0]=='B'?'warn':t[0]=='A'?'pass':'info'}"><b>${t[0]=='B'?'!':t[0]=='A'?'✓':'i'}</b><div>${esc(t)}</div></li>`).join('')}</ul>${bad.map(c=>`<p class="tag">Skipped ${esc(c.url)}: ${esc(c.err)}</p>`).join('')}</section>`}
+async function serp(k){const p=$('#sp').value,key=$('#sk').value.trim();
+ if(p=='serper'){const r=await fetch('https://google.serper.dev/search',{method:'POST',headers:{'X-API-KEY':key,'Content-Type':'application/json'},body:JSON.stringify({q:k,num:10})});if(!r.ok)throw Error('Serper HTTP '+r.status);return((await r.json()).organic||[]).map(o=>o.link)}
+ if(p=='cse'){const r=await fetch(`https://www.googleapis.com/customsearch/v1?key=${encodeURIComponent(key)}&cx=${encodeURIComponent($('#cx').value.trim())}&q=${encodeURIComponent(k)}&num=10`);if(!r.ok)throw Error('Google API HTTP '+r.status);return((await r.json()).items||[]).map(o=>o.link)}
+ return $('#man').value.split(/\s+/).filter(Boolean).map(l=>/^https?:/i.test(l)?l:'https://'+l)}
+async function run(){const out=$('#out'),st=m=>$('#st').textContent=m,btn=$('#go');btn.disabled=true;out.innerHTML='';
+ try{const ldp=$('#ld').value.trim();let url=$('#url').value.trim();
+  if(!url&&ldp){out.innerHTML=card('Schema validation',validate([ldp]).out);st('');return}
+  if(!url)throw Error('Enter a URL to analyze.');if(!/^https?:\/\//i.test(url))url='https://'+url;
+  st('Fetching page…');const html=$('#html').value.trim()||await getText(url);st('Analyzing…');
+  const R=await analyze(url,html,{kw:$('#kw').value.trim(),aux:1});out.innerHTML=view(R);
+  if($('#sp').value!='none'){const host=h=>new URL(h).hostname.replace(/^www\./,'');let links=[];
+   try{st(`Finding Google competitors for “${R.m.kw}”…`);links=await serp(R.m.kw)}catch(e){out.insertAdjacentHTML('beforeend',`<section class="card f">Competitor search failed: ${esc(e.message)}</section>`)}
+   const seen=new Set([host(url)]);links=links.filter(l=>{try{const h=host(l);if(seen.has(h))return 0;seen.add(h);return 1}catch{return 0}}).slice(0,6);
+   const C=[];for(const l of links){if(C.filter(c=>c.m).length>=3)break;st('Analyzing '+l);try{C.push(await analyze(l,await getText(l),{kw:R.m.kw,aux:1}))}catch(e){C.push({url:l,err:e.message})}}
+   out.insertAdjacentHTML('beforeend',cmp(R,C))}
+  st('Done.')}catch(e){st('');out.innerHTML=`<section class="card f"><strong>Error:</strong> ${esc(e.message)}</section>`}finally{btn.disabled=false}}
+$('#go').onclick=run;$('#url').onkeydown=e=>{if(e.key=='Enter')run()};
+</script></main></body></html>
